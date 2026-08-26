@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Gutter — Drive Comic Reader</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#121014" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ============ LIBRARY SCREEN ============ -->
+    <section id="screen-library" class="screen">
+      <header class="library-header">
+        <h1 class="library-header__title">GUTTER<span>.</span></h1>
+        <p class="library-header__sub">Your comics, streamed straight from Drive.</p>
+      </header>
+
+      <form id="add-comic-form" class="add-comic">
+        <div class="add-comic__row">
+          <input id="add-file-id" type="text" placeholder="Drive file ID (from the share link)" autocomplete="off" required />
+          <input id="add-title" type="text" placeholder="Title (optional)" autocomplete="off" />
+          <button class="btn btn--primary" type="submit">Add to library</button>
+        </div>
+        <p id="add-status" class="status-line"></p>
+      </form>
+
+      <details class="settings-panel">
+        <summary>Drive API key</summary>
+        <div class="settings-panel__body">
+          <input id="api-key-input" type="password" placeholder="Paste your Drive API key" autocomplete="off" />
+          <div>
+            <button id="save-key-btn" class="btn" type="button">Save key</button>
+            <span id="key-status" class="status-line" style="display:inline-block;margin-left:8px;"></span>
+          </div>
+          <p class="settings-panel__hint">
+            Stored only in this browser's local storage. Restrict the key to the Google Drive API,
+            and make sure each comic file is shared "Anyone with the link" — this app reads files
+            with <code>alt=media</code>, which needs no sign-in but does need the file to be link-shared.
+          </p>
+        </div>
+      </details>
+
+      <div id="library-grid" class="library-grid"></div>
+      <p id="library-empty" class="library-empty" hidden>
+        No comics yet. Paste a Drive file ID above to add your first one.
+      </p>
+    </section>
+
+    <!-- ============ READER SCREEN ============ -->
+    <section id="screen-reader" class="screen">
+      <div class="reader-topbar">
+        <button id="reader-back" class="reader-back" aria-label="Back to library">←</button>
+        <span id="reader-title" class="reader-topbar__title"></span>
+        <span id="reader-page-count" class="reader-topbar__count"></span>
+      </div>
+
+      <div id="reader-loading" class="reader-loading" hidden>
+        <p id="reader-loading-text">Loading…</p>
+      </div>
+      <div id="reader-error" class="reader-error" hidden></div>
+
+      <div id="reader-page-wrap" class="reader-page-wrap">
+        <button class="reader-nav-btn reader-nav-btn--prev" id="reader-prev" aria-label="Previous page"><span>‹</span></button>
+        <img id="reader-page-img" alt="Comic page" draggable="false" />
+        <button class="reader-nav-btn reader-nav-btn--next" id="reader-next" aria-label="Next page"><span>›</span></button>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

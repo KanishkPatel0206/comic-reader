@@ -1,0 +1,11 @@
+{
+  "name": "Gutter — Drive Comic Reader",
+  "short_name": "Gutter",
+  "description": "Streams and reads CBZ comics stored on Google Drive.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121014",
+  "theme_color": "#121014",
+  "orientation": "portrait-primary",
+  "icons": []
+}

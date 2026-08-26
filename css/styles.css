@@ -1,0 +1,339 @@
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --ink: #121014;
+  --panel: #1b1820;
+  --panel-raised: #221e27;
+  --line: #322c38;
+  --paper: #edeae3;
+  --paper-dim: #8b8790;
+  --red: #e8483a;
+  --red-dim: #7a2c26;
+  --focus: #f0c419;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  background-image:
+    radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 14px 14px;
+  background-position: -7px -7px;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  max-width: 960px;
+  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen { display: none; flex: 1; flex-direction: column; }
+.screen.is-active { display: flex; }
+
+/* ---------- Library ---------- */
+
+.library-header {
+  padding: 32px 20px 20px;
+  border-bottom: 3px solid var(--paper);
+}
+
+.library-header__title {
+  font-family: 'Anton', sans-serif;
+  font-size: clamp(2rem, 6vw, 3rem);
+  letter-spacing: 0.02em;
+  margin: 0;
+  line-height: 0.95;
+  color: var(--paper);
+}
+
+.library-header__title span {
+  color: var(--red);
+}
+
+.library-header__sub {
+  margin: 6px 0 0;
+  color: var(--paper-dim);
+  font-size: 0.9rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.add-comic {
+  margin: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.add-comic__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .add-comic__row { grid-template-columns: 1fr; }
+}
+
+input[type="text"], input[type="password"] {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  color: var(--paper);
+  padding: 10px 12px;
+  border-radius: 3px;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+input::placeholder { color: var(--paper-dim); }
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--panel-raised);
+  color: var(--paper);
+  padding: 10px 16px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.btn:hover { border-color: var(--paper); }
+
+.btn--primary {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--ink);
+}
+
+.btn--primary:hover { background: #f05a4d; }
+
+.status-line {
+  min-height: 1.2em;
+  font-size: 0.85rem;
+  color: var(--paper-dim);
+}
+
+.settings-panel {
+  margin: 0 20px 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.settings-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--paper-dim);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-panel__body {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.settings-panel__hint {
+  font-size: 0.8rem;
+  color: var(--paper-dim);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.library-grid {
+  padding: 4px 20px 40px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 18px;
+}
+
+.library-empty {
+  margin: 40px auto;
+  color: var(--paper-dim);
+  text-align: center;
+  max-width: 320px;
+}
+
+.comic-card { display: flex; flex-direction: column; gap: 8px; }
+
+.comic-card__cover {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  background: linear-gradient(155deg, var(--panel-raised), var(--panel));
+  border: 2px solid var(--paper);
+  box-shadow: 4px 4px 0 var(--line);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.12s ease;
+}
+
+.comic-card__cover:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--red); }
+
+.comic-card__spine {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 6px;
+  background: var(--red);
+}
+
+.comic-card__initial {
+  font-family: 'Anton', sans-serif;
+  font-size: 2.4rem;
+  color: var(--line);
+}
+
+.comic-card__badge {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: var(--ink);
+  border: 1px solid var(--paper-dim);
+  color: var(--paper);
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.comic-card__meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.comic-card__title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.comic-card__remove {
+  background: none;
+  border: none;
+  color: var(--paper-dim);
+  font-size: 0.7rem;
+  padding: 0;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.comic-card__remove:hover { color: var(--red); }
+
+/* ---------- Reader ---------- */
+
+#screen-reader { background: #000; }
+
+.reader-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.reader-topbar__title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-topbar__count {
+  font-family: 'Anton', sans-serif;
+  letter-spacing: 0.03em;
+  color: var(--paper-dim);
+  font-size: 0.9rem;
+}
+
+.reader-back {
+  background: none;
+  border: none;
+  color: var(--paper);
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.reader-loading, .reader-error {
+  margin: auto;
+  text-align: center;
+  color: var(--paper-dim);
+  padding: 40px;
+}
+
+.reader-error { color: var(--red); }
+
+.reader-page-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+#reader-page-img {
+  max-width: 100%;
+  max-height: calc(100vh - 60px);
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.reader-nav-btn {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 15%;
+  background: none;
+  border: none;
+  color: transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.reader-nav-btn:hover, .reader-nav-btn:focus-visible {
+  opacity: 1;
+  color: var(--paper);
+  background: linear-gradient(to var(--dir, right), rgba(0,0,0,0.35), transparent);
+}
+
+.reader-nav-btn--prev { left: 0; --dir: right; }
+.reader-nav-btn--next { right: 0; --dir: left; justify-content: flex-end; }
+
+.reader-nav-btn span {
+  font-size: 1.8rem;
+}
