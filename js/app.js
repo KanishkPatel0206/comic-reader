@@ -5,7 +5,7 @@ import {
   getProgress, setProgress,
   loadSettings, saveSettings,
 } from './library.js';
-import { openCbz } from './reader.js';
+import { openPdf } from './pdf-reader.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -21,11 +21,27 @@ let activeSession = null; // { pages, entryNames, revoke, comic }
 // ---------- boot ----------
 
 function init() {
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
   $('#api-key-input').value = settings.apiKey || '';
   renderLibrary();
   bindLibraryEvents();
   bindReaderEvents();
   showScreen('library');
+}
+
+// Accepts either a bare Drive file ID or a full share link and pulls
+// the ID out of either — pasting the whole drive.google.com/file/d/.../view
+// URL used to fail with "File not found" because the ID field expected
+// just the ID segment.
+function extractFileId(raw) {
+  if (!raw) return '';
+  const s = raw.trim();
+  const linkMatch = s.match(/\/d\/([a-zA-Z0-9_-]{10,})/) || s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  if (linkMatch) return linkMatch[1];
+  return s;
 }
 
 function showScreen(name) {
@@ -74,7 +90,7 @@ function renderComicCard(comic) {
 function bindLibraryEvents() {
   $('#add-comic-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const fileId = $('#add-file-id').value.trim();
+    const fileId = extractFileId($('#add-file-id').value);
     const titleInput = $('#add-title').value.trim();
     const status = $('#add-status');
 
@@ -87,12 +103,15 @@ function bindLibraryEvents() {
     status.textContent = 'Checking file…';
     try {
       const meta = await fetchFileMeta(fileId, settings.apiKey);
+      const isPdf = meta.mimeType === 'application/pdf';
       const comic = addComic({
         fileId,
-        title: titleInput || meta.name.replace(/\.cbz$/i, ''),
+        title: titleInput || meta.name.replace(/\.pdf$/i, ''),
         size: Number(meta.size) || null,
       });
-      status.textContent = `Added "${comic.title}".`;
+      status.textContent = isPdf
+        ? `Added "${comic.title}".`
+        : `Added "${comic.title}" — heads up, Drive reports this as ${meta.mimeType || 'an unknown type'}, not a PDF. It may not open.`;
       $('#add-comic-form').reset();
       renderLibrary();
     } catch (err) {
@@ -143,8 +162,10 @@ async function openComic(fileId) {
         : `Downloading "${comic.title}"…`);
     });
 
-    setLoading(true, 'Unpacking pages…');
-    const { pages, entryNames, revoke } = await openCbz(blob);
+    setLoading(true, 'Rendering pages…');
+    const { pages, entryNames, revoke } = await openPdf(blob, (rendered, total) => {
+      setLoading(true, `Rendering page ${rendered} of ${total}…`);
+    });
 
     if (activeSession) activeSession.revoke();
     activeSession = { pages, entryNames, revoke, comic };

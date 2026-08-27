@@ -76,13 +76,13 @@ async function fetchFileMeta(fileId, apiKey) {
 }
 
 /**
- * List .cbz files in a given Drive folder (optional convenience helper —
+ * List .pdf files in a given Drive folder (optional convenience helper —
  * lets a user point the library manager at a folder instead of pasting
  * individual file IDs).
  */
-async function listCbzInFolder(folderId, apiKey) {
+async function listPdfInFolder(folderId, apiKey) {
   const q = encodeURIComponent(
-    `'${folderId}' in parents and trashed = false and (name contains '.cbz' or mimeType = 'application/vnd.comicbook+zip' or mimeType = 'application/zip')`
+    `'${folderId}' in parents and trashed = false and (name contains '.pdf' or mimeType = 'application/pdf')`
   );
   const fields = encodeURIComponent('files(id,name,size,modifiedTime,thumbnailLink)');
   const url = `${DRIVE_BASE}/files?q=${q}&fields=${fields}&pageSize=200&key=${encodeURIComponent(apiKey)}`;
@@ -116,4 +116,4 @@ function describeDriveError(status, rawBody) {
   }
 }
 
-export { fetchFileBlob, fetchFileMeta, listCbzInFolder, DriveApiError };
+export { fetchFileBlob, fetchFileMeta, listPdfInFolder, DriveApiError };

@@ -20,7 +20,7 @@
 
       <form id="add-comic-form" class="add-comic">
         <div class="add-comic__row">
-          <input id="add-file-id" type="text" placeholder="Drive file ID (from the share link)" autocomplete="off" required />
+          <input id="add-file-id" type="text" placeholder="Drive file ID or share link" autocomplete="off" required />
           <input id="add-title" type="text" placeholder="Title (optional)" autocomplete="off" />
           <button class="btn btn--primary" type="submit">Add to library</button>
         </div>
@@ -37,7 +37,7 @@
           </div>
           <p class="settings-panel__hint">
             Stored only in this browser's local storage. Restrict the key to the Google Drive API,
-            and make sure each comic file is shared "Anyone with the link" — this app reads files
+            and make sure each comic's PDF is shared "Anyone with the link" — this app reads files
             with <code>alt=media</code>, which needs no sign-in but does need the file to be link-shared.
           </p>
         </div>
@@ -71,7 +71,7 @@
 
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

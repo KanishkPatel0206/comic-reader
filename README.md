@@ -1,8 +1,8 @@
-# Gutter — a Drive-backed CBZ reader
+# Gutter — a Drive-backed PDF comic reader
 
 Static, client-only comic reader. No backend, no build step. It fetches
-`.cbz` files straight from Google Drive using `alt=media` and unzips /
-renders them in the browser with JSZip.
+`.pdf` files straight from Google Drive using `alt=media` and renders each
+page in the browser with [pdf.js](https://mozilla.github.io/pdf.js/).
 
 ## 1. Get a Drive API key
 
@@ -21,12 +21,13 @@ being abused elsewhere — don't skip it.
 
 ## 2. Share your comics
 
-Each CBZ file in Drive needs its sharing setting set to **"Anyone with the
+Each PDF file in Drive needs its sharing setting set to **"Anyone with the
 link"** (Viewer is enough). The app never signs the user in, so a file that
 requires sign-in will fail with a 403.
 
-To add a comic, open it in Drive, "Share → Copy link", and pull the file ID
-out of the URL:
+To add a comic, open it in Drive, "Share → Copy link". You can paste
+either the whole link or just the file ID — the app will pull the ID out
+of a full link for you:
 
 ```
 https://drive.google.com/file/d/1AbCDeFGhIJkLmnOPqrsTUVwxyz1234/view
@@ -45,7 +46,7 @@ python3 -m http.server 8080
 ```
 
 Then in the app: paste your API key under "Drive API key", paste a file ID
-+ optional title, and hit "Add to library".
+or share link + optional title, and hit "Add to library".
 
 ## Project structure
 
@@ -56,9 +57,9 @@ comic-reader/
 ├── css/
 │   └── styles.css
 └── js/
-    ├── drive-api.js      # fetchFileBlob / fetchFileMeta / listCbzInFolder
+    ├── drive-api.js      # fetchFileBlob / fetchFileMeta / listPdfInFolder
     ├── library.js         # localStorage-backed library + settings + progress
-    ├── reader.js           # JSZip unzip -> ordered page object URLs
+    ├── pdf-reader.js       # pdf.js render -> ordered page object URLs
     └── app.js               # screen wiring / event handlers
 ```
 
@@ -66,24 +67,29 @@ comic-reader/
 
 - `fetchFileBlob(fileId, apiKey, onProgress)` — streams a file's bytes from
   Drive via `alt=media`, with optional download-progress callback.
-- `fetchFileMeta` — validates a file ID and pulls its name/size before
-  adding it to the library.
-- `listCbzInFolder` — helper to list `.cbz` files in a Drive folder (not
+- `fetchFileMeta` — validates a file ID and pulls its name/size/mimeType
+  before adding it to the library, and warns if Drive doesn't report the
+  file as a PDF.
+- `listPdfInFolder` — helper to list `.pdf` files in a Drive folder (not
   yet wired into the UI — useful if you want a "browse folder" flow instead
   of pasting file IDs one at a time).
 - Library manager: add/remove comics, persisted in `localStorage`, no
   server.
-- Reader: client-side unzip via JSZip, natural page sort (`page2` before
-  `page10`), tap-left/right or arrow-key page turning, remembers last page
-  read per comic.
+- Reader: client-side PDF rendering via pdf.js, one JPEG per page, tap-
+  left/right or arrow-key page turning, remembers last page read per comic.
+- Add-comic field accepts a bare file ID or a full `drive.google.com/file/d/.../view`
+  link.
 
 ## Not yet done / natural next steps
 
 - Service worker (offline shell caching) — manifest is in place but there's
   no `sw.js` yet.
-- `listCbzInFolder` isn't wired to a "browse folder" UI.
+- `listPdfInFolder` isn't wired to a "browse folder" UI — this would let
+  you point Gutter at your Ultimate Spider-man folder instead of adding
+  issues one at a time.
 - No thumbnail covers — currently a plain initial-letter placeholder;
-  Drive's `thumbnailLink` needs OAuth (not a bare API key) so this would
-  need either an `<img>` with the key appended where Drive allows it, or a
-  first-page-of-the-CBZ thumbnail generated client-side instead.
-- No RAR/CBR support (by design — CBZ/ZIP only, per your constraint).
+  a real page-1 thumbnail could be generated client-side from the first
+  rendered page and cached.
+- Large PDFs render every page up front before the reader opens, which can
+  be slow for long runs. A lazy/on-demand render-as-you-go mode would fix
+  that but adds complexity.
