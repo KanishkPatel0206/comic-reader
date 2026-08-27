@@ -19,7 +19,7 @@ function saveLibrary(items) {
   localStorage.setItem(LIB_KEY, JSON.stringify(items));
 }
 
-function addComic({ fileId, title, size = null, thumbnailLink = null }) {
+function addComic({ fileId, title, size = null, thumbnailLink = null, source = 'drive' }) {
   const items = loadLibrary();
   if (items.some((c) => c.fileId === fileId)) {
     throw new Error('This file ID is already in your library.');
@@ -29,6 +29,7 @@ function addComic({ fileId, title, size = null, thumbnailLink = null }) {
     title: title?.trim() || fileId,
     size,
     thumbnailLink,
+    source, // 'drive' (fetched via Drive API) or 'local' (imported from device, no network needed)
     addedAt: Date.now(),
   };
   items.push(comic);

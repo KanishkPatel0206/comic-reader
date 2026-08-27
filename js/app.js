@@ -25,12 +25,13 @@ let activeSession = null; // { pages, entryNames, revoke, comic }
 // the IndexedDB layer is what survives across sessions.
 const blobCache = new Map();
 
-// Resolves a PDF blob for fileId, checking the in-memory cache, then the
-// persistent IndexedDB store, and only hitting Drive as a last resort.
-// Whatever is fetched from Drive gets written back to both caches so the
-// next open/download — even after a full page reload — is instant and
-// offline-capable.
-async function resolveBlob(fileId, apiKey, onProgress) {
+// Resolves a PDF blob for a comic, checking the in-memory cache, then the
+// persistent IndexedDB store, and — for Drive-backed comics only — Drive
+// itself as a last resort. Locally-imported comics (comic.source ===
+// 'local') have no network fallback: their only copy is IndexedDB, since
+// they were never fetched from anywhere in the first place.
+async function resolveBlob(comic, apiKey, onProgress) {
+  const fileId = comic.fileId;
   let blob = blobCache.get(fileId);
   if (blob) return { blob, source: 'memory' };
 
@@ -40,9 +41,19 @@ async function resolveBlob(fileId, apiKey, onProgress) {
     return { blob, source: 'disk' };
   }
 
+  if (comic.source === 'local') {
+    throw new Error(
+      'This PDF was imported from your device and its local copy is no longer available ' +
+      '(the browser may have cleared storage). Re-add it from your device to read it again.'
+    );
+  }
+
   blob = await fetchFileBlob(fileId, apiKey, onProgress);
   blobCache.set(fileId, blob);
-  cacheBlob(fileId, blob); // fire-and-forget; caching failures shouldn't block reading
+  cacheBlob(fileId, blob).catch(() => {
+    // Opportunistic cache of a Drive fetch — losing it just means the next
+    // open re-fetches from Drive, so failures here are silently ignored.
+  });
   return { blob, source: 'network' };
 }
 
@@ -57,7 +68,20 @@ function init() {
   renderLibrary();
   bindLibraryEvents();
   bindReaderEvents();
+  bindConnectivityBadge();
   showScreen('library');
+}
+
+// Shows a small "Offline" badge in the header when the browser reports no
+// network connection — mainly so it's clear that locally-imported comics
+// and already-cached ones still work fine, while adding a *new* comic via
+// Drive won't.
+function bindConnectivityBadge() {
+  const badge = $('#connectivity-badge');
+  const update = () => { badge.hidden = navigator.onLine; };
+  window.addEventListener('online', update);
+  window.addEventListener('offline', update);
+  update();
 }
 
 // Accepts either a bare Drive file ID or a full share link and pulls
@@ -135,7 +159,7 @@ function renderComicCard(comic) {
       ${progress > 0 ? `<span class="comic-card__badge">p.${progress + 1}</span>` : ''}
     </button>
     <div class="comic-card__meta">
-      <p class="comic-card__title">${escapeHtml(comic.title)}</p>
+      <p class="comic-card__title">${escapeHtml(comic.title)}${comic.source === 'local' ? ' <span class="comic-card__local-tag">on device</span>' : ''}</p>
       <div class="comic-card__actions">
         <button class="comic-card__icon-btn" data-download="${comic.fileId}" aria-label="Download ${escapeHtml(comic.title)}" title="Download to device">⬇</button>
         <button class="comic-card__remove" data-remove="${comic.fileId}" aria-label="Remove ${escapeHtml(comic.title)}">Remove</button>
@@ -202,6 +226,38 @@ function bindLibraryEvents() {
     $('#key-status').textContent = settings.apiKey ? 'Saved.' : 'Cleared.';
     setTimeout(() => ($('#key-status').textContent = ''), 2000);
   });
+
+  $('#add-local-file').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so picking the same file again still fires 'change'
+    if (!file) return;
+
+    const status = $('#add-local-status');
+    const looksLikePdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!looksLikePdf) {
+      status.textContent = "That doesn't look like a PDF.";
+      return;
+    }
+
+    status.textContent = 'Saving to this device…';
+    const fileId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const title = file.name.replace(/\.pdf$/i, '');
+
+    try {
+      // Await this — for a local import, IndexedDB IS the only copy, so we
+      // need to know it actually persisted before listing it in the library.
+      await cacheBlob(fileId, file);
+      blobCache.set(fileId, file);
+      const comic = addComic({ fileId, title, size: file.size, source: 'local' });
+      status.textContent = `Added "${comic.title}" — stored on this device, reads fully offline.`;
+      setTimeout(() => {
+        if (status.textContent.startsWith('Added')) status.textContent = '';
+      }, 3000);
+      renderLibrary();
+    } catch {
+      status.textContent = "Couldn't save that file — your device storage may be full.";
+    }
+  });
 }
 
 // ---------- opening + reading a comic ----------
@@ -209,16 +265,17 @@ function bindLibraryEvents() {
 async function openComic(fileId) {
   const comic = loadLibrary().find((c) => c.fileId === fileId);
   if (!comic) return;
-  if (!settings.apiKey) {
+  const isLocal = comic.source === 'local';
+  if (!isLocal && !settings.apiKey) {
     alert('Add your Drive API key first.');
     return;
   }
 
   showScreen('reader');
-  setLoading(true, `Downloading "${comic.title}"…`);
+  setLoading(true, isLocal ? 'Loading…' : `Downloading "${comic.title}"…`);
 
   try {
-    const { blob } = await resolveBlob(fileId, settings.apiKey, (loaded, total) => {
+    const { blob } = await resolveBlob(comic, settings.apiKey, (loaded, total) => {
       const pct = total ? Math.round((loaded / total) * 100) : null;
       setLoading(true, pct != null
         ? `Downloading "${comic.title}"… ${pct}%`
@@ -278,7 +335,7 @@ function sanitizeFilename(title) {
 async function downloadComic(fileId) {
   const comic = loadLibrary().find((c) => c.fileId === fileId);
   if (!comic) return;
-  if (!settings.apiKey) {
+  if (comic.source !== 'local' && !settings.apiKey) {
     alert('Add your Drive API key first.');
     return;
   }
@@ -289,7 +346,7 @@ async function downloadComic(fileId) {
   if (statusEl) statusEl.textContent = '';
 
   try {
-    const { blob, source } = await resolveBlob(fileId, settings.apiKey, (loaded, total) => {
+    const { blob, source } = await resolveBlob(comic, settings.apiKey, (loaded, total) => {
       if (!statusEl) return;
       const pct = total ? Math.round((loaded / total) * 100) : null;
       statusEl.textContent = pct != null ? `Downloading… ${pct}%` : 'Downloading…';

@@ -97,16 +97,29 @@ comic-reader/
   in, since browsers don't allow websites to access arbitrary files in the
   Downloads folder. If you want the app itself to avoid re-fetching, that's
   what the IndexedDB cache above is for.
-- **Installable PWA (`sw.js` + `manifest.json` + `icons/`)** — the app now
-  registers a service worker that precaches the shell (HTML/CSS/JS and
-  pdf.js from the CDN) on first load. This makes Gutter installable:
-  Chrome/Edge on desktop show an install icon in the address bar, and
-  "Add to Home Screen" on Android/iOS puts a real app icon on the device
-  that opens in `standalone` display mode (no browser chrome). The service
-  worker only caches the app's own code — it never touches Drive API
-  responses, so it can't cause a stale/expired-file issue when reading
-  comics. Comic data offline-availability is handled separately by the
-  IndexedDB cache above.
+- **Fully offline PDFs, no Drive at all (`Add PDF from this device`)** — a
+  file picker on the library screen lets you import a PDF straight from
+  your device's storage (e.g. one you already downloaded via the button
+  above, or copied over another way). No Drive API key, no network call,
+  no file ID — the raw bytes go directly into the IndexedDB cache and the
+  comic is readable immediately and on every future visit, fully offline.
+  These show an "on device" tag on their card. Because there's no Drive
+  copy backing them up, if the browser ever clears its storage (e.g. very
+  aggressive private-browsing cleanup, or manually clearing site data) that
+  comic is gone and needs to be re-imported — there's no re-fetch fallback,
+  unlike Drive-backed comics.
+- **Offline indicator** — a small "Offline" badge appears in the library
+  header whenever `navigator.onLine` reports no connection, as a reminder
+  that adding new Drive comics won't work right now, while already-cached
+  and locally-imported comics still read fine.
+- **Installable PWA (`sw.js` + `manifest.json` + `icons/`)** — a service
+  worker precaches the app shell (HTML/CSS/JS and pdf.js from the CDN) on
+  first load. This makes Gutter installable: Chrome/Edge on desktop show
+  an install icon in the address bar, and "Add to Home Screen" on
+  Android/iOS puts a real app icon on the device that opens in
+  `standalone` display mode (no browser chrome). The service worker only
+  caches the app's own code — it never touches Drive API responses, so it
+  can't cause a stale/expired-file issue when reading comics.
 
 ## Not yet done / natural next steps
 

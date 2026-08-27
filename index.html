@@ -18,6 +18,7 @@
       <header class="library-header">
         <h1 class="library-header__title">GUTTER<span>.</span></h1>
         <p class="library-header__sub">Your comics, streamed straight from Drive.</p>
+        <span id="connectivity-badge" class="connectivity-badge" hidden>Offline</span>
       </header>
 
       <form id="add-comic-form" class="add-comic">
@@ -28,6 +29,15 @@
         </div>
         <p id="add-status" class="status-line"></p>
       </form>
+
+      <div class="add-local">
+        <label for="add-local-file" class="btn btn--secondary">
+          📄 Add PDF from this device
+        </label>
+        <input id="add-local-file" type="file" accept="application/pdf,.pdf" hidden />
+        <span class="add-local__hint">Fully offline — no Drive, no API key, works with no connection.</span>
+        <p id="add-local-status" class="status-line"></p>
+      </div>
 
       <details class="settings-panel">
         <summary>Drive API key</summary>

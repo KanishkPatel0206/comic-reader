@@ -33,24 +33,22 @@ function openDb() {
 
 /**
  * Store a PDF blob for a given file ID, along with a timestamp so a future
- * "clear old cache" feature has something to sort on.
+ * "clear old cache" feature has something to sort on. Throws on failure
+ * (quota exceeded, private browsing, etc.) — callers that treat caching as
+ * a nice-to-have (e.g. opportunistically caching a Drive fetch) should
+ * catch and ignore; callers where this IS the only copy of the data (e.g.
+ * a locally-imported PDF) should catch and surface the failure to the user.
  * @param {string} fileId
  * @param {Blob} blob
  */
 async function putBlob(fileId, blob) {
-  try {
-    const db = await openDb();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).put({ blob, size: blob.size, cachedAt: Date.now() }, fileId);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch {
-    // Storage can fail (quota exceeded, private browsing, etc.) — caching
-    // is a nice-to-have, not a requirement, so we swallow the error and
-    // let the app keep working by re-fetching from Drive next time.
-  }
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put({ blob, size: blob.size, cachedAt: Date.now() }, fileId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
 /**
