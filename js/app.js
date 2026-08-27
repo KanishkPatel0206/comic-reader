@@ -18,6 +18,12 @@ const screens = {
 let settings = loadSettings();
 let activeSession = null; // { pages, entryNames, revoke, comic }
 
+// In-memory cache of raw PDF blobs, keyed by Drive file ID. Populated
+// whenever a comic is opened or downloaded, so the two actions can share
+// bytes instead of hitting Drive twice in the same session. Cleared on
+// page reload (blobs aren't persisted — localStorage can't hold them).
+const blobCache = new Map();
+
 // ---------- boot ----------
 
 function init() {
@@ -81,8 +87,12 @@ function renderComicCard(comic) {
     </button>
     <div class="comic-card__meta">
       <p class="comic-card__title">${escapeHtml(comic.title)}</p>
-      <button class="comic-card__remove" data-remove="${comic.fileId}" aria-label="Remove ${escapeHtml(comic.title)}">Remove</button>
+      <div class="comic-card__actions">
+        <button class="comic-card__icon-btn" data-download="${comic.fileId}" aria-label="Download ${escapeHtml(comic.title)}" title="Download to device">⬇</button>
+        <button class="comic-card__remove" data-remove="${comic.fileId}" aria-label="Remove ${escapeHtml(comic.title)}">Remove</button>
+      </div>
     </div>
+    <p class="comic-card__status" data-status="${comic.fileId}"></p>
   `;
   return card;
 }
@@ -122,12 +132,15 @@ function bindLibraryEvents() {
   $('#library-grid').addEventListener('click', (e) => {
     const openId = e.target.closest('[data-open]')?.dataset.open;
     const removeId = e.target.closest('[data-remove]')?.dataset.remove;
+    const downloadId = e.target.closest('[data-download]')?.dataset.download;
 
     if (openId) openComic(openId);
+    if (downloadId) downloadComic(downloadId);
     if (removeId) {
       const comic = loadLibrary().find((c) => c.fileId === removeId);
       if (confirm(`Remove "${comic?.title ?? removeId}" from your library?`)) {
         removeComic(removeId);
+        blobCache.delete(removeId);
         renderLibrary();
       }
     }
@@ -155,12 +168,16 @@ async function openComic(fileId) {
   setLoading(true, `Downloading "${comic.title}"…`);
 
   try {
-    const blob = await fetchFileBlob(fileId, settings.apiKey, (loaded, total) => {
-      const pct = total ? Math.round((loaded / total) * 100) : null;
-      setLoading(true, pct != null
-        ? `Downloading "${comic.title}"… ${pct}%`
-        : `Downloading "${comic.title}"…`);
-    });
+    let blob = blobCache.get(fileId);
+    if (!blob) {
+      blob = await fetchFileBlob(fileId, settings.apiKey, (loaded, total) => {
+        const pct = total ? Math.round((loaded / total) * 100) : null;
+        setLoading(true, pct != null
+          ? `Downloading "${comic.title}"… ${pct}%`
+          : `Downloading "${comic.title}"…`);
+      });
+      blobCache.set(fileId, blob);
+    }
 
     setLoading(true, 'Rendering pages…');
     const { pages, entryNames, revoke } = await openPdf(blob, (rendered, total) => {
@@ -178,6 +195,78 @@ async function openComic(fileId) {
     const msg = err instanceof DriveApiError || err instanceof Error ? err.message : 'Something went wrong opening this file.';
     $('#reader-error').textContent = msg;
     $('#reader-error').hidden = false;
+  }
+}
+
+// ---------- downloading a comic to the device ----------
+
+// Triggers a native browser download by clicking a temporary, hidden <a>
+// with a blob: URL. This works cross-platform, including Android mobile
+// browsers that don't support the File System Access API — the browser's
+// own download manager takes it from there and saves to the device's
+// shared Downloads folder (or prompts for a location, per browser/OS
+// settings), no extra permissions or APIs needed on our end.
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Give the browser a moment to pick up the blob before revoking it.
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function sanitizeFilename(title) {
+  const cleaned = (title || 'comic')
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned || 'comic';
+}
+
+async function downloadComic(fileId) {
+  const comic = loadLibrary().find((c) => c.fileId === fileId);
+  if (!comic) return;
+  if (!settings.apiKey) {
+    alert('Add your Drive API key first.');
+    return;
+  }
+
+  const statusEl = document.querySelector(`[data-status="${fileId}"]`);
+  const btn = document.querySelector(`[data-download="${fileId}"]`);
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = '';
+
+  try {
+    let blob = blobCache.get(fileId);
+    if (blob) {
+      if (statusEl) statusEl.textContent = 'Saving…';
+    } else {
+      if (statusEl) statusEl.textContent = 'Downloading…';
+      blob = await fetchFileBlob(fileId, settings.apiKey, (loaded, total) => {
+        if (!statusEl) return;
+        const pct = total ? Math.round((loaded / total) * 100) : null;
+        statusEl.textContent = pct != null ? `Downloading… ${pct}%` : 'Downloading…';
+      });
+      blobCache.set(fileId, blob);
+    }
+
+    triggerDownload(blob, `${sanitizeFilename(comic.title)}.pdf`);
+    if (statusEl) {
+      statusEl.textContent = 'Saved to Downloads.';
+      setTimeout(() => {
+        if (statusEl.textContent === 'Saved to Downloads.') statusEl.textContent = '';
+      }, 2500);
+    }
+  } catch (err) {
+    const msg = err instanceof DriveApiError ? err.message : 'Download failed. Try again.';
+    if (statusEl) statusEl.textContent = msg;
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -201,6 +290,10 @@ function goToPage(index) {
 
 function bindReaderEvents() {
   $('#reader-back').addEventListener('click', closeReader);
+
+  $('#reader-download').addEventListener('click', () => {
+    if (activeSession?.comic) downloadComic(activeSession.comic.fileId);
+  });
 
   $('#reader-prev').addEventListener('click', () => stepPage(-1));
   $('#reader-next').addEventListener('click', () => stepPage(1));

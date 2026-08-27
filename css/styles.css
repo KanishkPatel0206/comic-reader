@@ -237,6 +237,31 @@ input::placeholder { color: var(--paper-dim); }
   overflow-wrap: anywhere;
 }
 
+.comic-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.comic-card__icon-btn {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--paper);
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+  font-size: 0.75rem;
+  padding: 0;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.comic-card__icon-btn:hover { border-color: var(--focus); color: var(--focus); }
+.comic-card__icon-btn:disabled { opacity: 0.5; cursor: default; }
+
 .comic-card__remove {
   background: none;
   border: none;
@@ -248,6 +273,13 @@ input::placeholder { color: var(--paper-dim); }
 }
 
 .comic-card__remove:hover { color: var(--red); }
+
+.comic-card__status {
+  margin: -4px 0 0;
+  font-size: 0.7rem;
+  color: var(--paper-dim);
+  min-height: 1.1em;
+}
 
 /* ---------- Reader ---------- */
 
@@ -286,6 +318,19 @@ input::placeholder { color: var(--paper-dim); }
   line-height: 1;
   padding: 4px 8px;
 }
+
+.reader-download {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--paper);
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.reader-download:hover { border-color: var(--focus); color: var(--focus); }
 
 .reader-loading, .reader-error {
   margin: auto;
