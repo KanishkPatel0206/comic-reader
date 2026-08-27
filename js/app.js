@@ -6,6 +6,7 @@ import {
   loadSettings, saveSettings,
 } from './library.js';
 import { openPdf } from './pdf-reader.js';
+import { getBlob as getCachedBlob, putBlob as cacheBlob, deleteBlob as deleteCachedBlob, hasBlob } from './blob-store.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -18,11 +19,32 @@ const screens = {
 let settings = loadSettings();
 let activeSession = null; // { pages, entryNames, revoke, comic }
 
-// In-memory cache of raw PDF blobs, keyed by Drive file ID. Populated
-// whenever a comic is opened or downloaded, so the two actions can share
-// bytes instead of hitting Drive twice in the same session. Cleared on
-// page reload (blobs aren't persisted — localStorage can't hold them).
+// In-memory cache of raw PDF blobs, keyed by Drive file ID — a fast
+// first stop before checking the persistent IndexedDB store (blob-store.js).
+// Populated whenever a comic is opened or downloaded. Cleared on reload;
+// the IndexedDB layer is what survives across sessions.
 const blobCache = new Map();
+
+// Resolves a PDF blob for fileId, checking the in-memory cache, then the
+// persistent IndexedDB store, and only hitting Drive as a last resort.
+// Whatever is fetched from Drive gets written back to both caches so the
+// next open/download — even after a full page reload — is instant and
+// offline-capable.
+async function resolveBlob(fileId, apiKey, onProgress) {
+  let blob = blobCache.get(fileId);
+  if (blob) return { blob, source: 'memory' };
+
+  blob = await getCachedBlob(fileId);
+  if (blob) {
+    blobCache.set(fileId, blob);
+    return { blob, source: 'disk' };
+  }
+
+  blob = await fetchFileBlob(fileId, apiKey, onProgress);
+  blobCache.set(fileId, blob);
+  cacheBlob(fileId, blob); // fire-and-forget; caching failures shouldn't block reading
+  return { blob, source: 'network' };
+}
 
 // ---------- boot ----------
 
@@ -70,8 +92,35 @@ function renderLibrary() {
     .slice()
     .sort((a, b) => b.addedAt - a.addedAt)
     .forEach((comic) => {
-      grid.appendChild(renderComicCard(comic));
+      const card = renderComicCard(comic);
+      grid.appendChild(card);
+      markOfflineBadgeWhenCached(comic.fileId, card);
     });
+}
+
+// Checking IndexedDB is async, so the offline badge is added after the
+// card is already in the DOM rather than blocking the initial render.
+function markOfflineBadgeWhenCached(fileId, card) {
+  hasBlob(fileId).then((cached) => {
+    if (!cached) return;
+    const cover = card.querySelector('.comic-card__cover');
+    if (cover && !cover.querySelector('.comic-card__offline')) {
+      const badge = document.createElement('span');
+      badge.className = 'comic-card__offline';
+      badge.title = 'Available offline';
+      badge.textContent = '✓';
+      cover.appendChild(badge);
+    }
+  });
+}
+
+// Re-checks the offline badge for a single card after a fetch that may
+// have just cached the comic for the first time (e.g. after opening or
+// downloading it), so the checkmark appears without a full re-render.
+function refreshOfflineBadge(fileId) {
+  const cover = document.querySelector(`[data-open="${fileId}"]`);
+  const card = cover?.closest('.comic-card');
+  if (card) markOfflineBadgeWhenCached(fileId, card);
 }
 
 function renderComicCard(comic) {
@@ -141,6 +190,7 @@ function bindLibraryEvents() {
       if (confirm(`Remove "${comic?.title ?? removeId}" from your library?`)) {
         removeComic(removeId);
         blobCache.delete(removeId);
+        deleteCachedBlob(removeId);
         renderLibrary();
       }
     }
@@ -168,16 +218,12 @@ async function openComic(fileId) {
   setLoading(true, `Downloading "${comic.title}"…`);
 
   try {
-    let blob = blobCache.get(fileId);
-    if (!blob) {
-      blob = await fetchFileBlob(fileId, settings.apiKey, (loaded, total) => {
-        const pct = total ? Math.round((loaded / total) * 100) : null;
-        setLoading(true, pct != null
-          ? `Downloading "${comic.title}"… ${pct}%`
-          : `Downloading "${comic.title}"…`);
-      });
-      blobCache.set(fileId, blob);
-    }
+    const { blob } = await resolveBlob(fileId, settings.apiKey, (loaded, total) => {
+      const pct = total ? Math.round((loaded / total) * 100) : null;
+      setLoading(true, pct != null
+        ? `Downloading "${comic.title}"… ${pct}%`
+        : `Downloading "${comic.title}"…`);
+    });
 
     setLoading(true, 'Rendering pages…');
     const { pages, entryNames, revoke } = await openPdf(blob, (rendered, total) => {
@@ -190,6 +236,7 @@ async function openComic(fileId) {
     $('#reader-title').textContent = comic.title;
     goToPage(getProgress(fileId));
     setLoading(false);
+    refreshOfflineBadge(fileId);
   } catch (err) {
     setLoading(false);
     const msg = err instanceof DriveApiError || err instanceof Error ? err.message : 'Something went wrong opening this file.';
@@ -242,20 +289,15 @@ async function downloadComic(fileId) {
   if (statusEl) statusEl.textContent = '';
 
   try {
-    let blob = blobCache.get(fileId);
-    if (blob) {
-      if (statusEl) statusEl.textContent = 'Saving…';
-    } else {
-      if (statusEl) statusEl.textContent = 'Downloading…';
-      blob = await fetchFileBlob(fileId, settings.apiKey, (loaded, total) => {
-        if (!statusEl) return;
-        const pct = total ? Math.round((loaded / total) * 100) : null;
-        statusEl.textContent = pct != null ? `Downloading… ${pct}%` : 'Downloading…';
-      });
-      blobCache.set(fileId, blob);
-    }
+    const { blob, source } = await resolveBlob(fileId, settings.apiKey, (loaded, total) => {
+      if (!statusEl) return;
+      const pct = total ? Math.round((loaded / total) * 100) : null;
+      statusEl.textContent = pct != null ? `Downloading… ${pct}%` : 'Downloading…';
+    });
+    if (statusEl && source !== 'network') statusEl.textContent = 'Saving…';
 
     triggerDownload(blob, `${sanitizeFilename(comic.title)}.pdf`);
+    refreshOfflineBadge(fileId);
     if (statusEl) {
       statusEl.textContent = 'Saved to Downloads.';
       setTimeout(() => {

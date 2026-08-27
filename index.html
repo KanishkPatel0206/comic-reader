@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Gutter — Drive Comic Reader</title>
   <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <meta name="theme-color" content="#121014" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
@@ -74,5 +76,18 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script type="module" src="js/app.js"></script>
+  <script>
+    // Registered as a plain classic script (not a module) so it runs
+    // even in browsers with partial module support, and scoped to './'
+    // so it works whether the app sits at a domain root or a GitHub
+    // Pages subpath like /username/repo/.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch((err) => {
+          console.warn('Gutter: service worker registration failed', err);
+        });
+      });
+    }
+  </script>
 </body>
 </html>

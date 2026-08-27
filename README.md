@@ -54,13 +54,16 @@ or share link + optional title, and hit "Add to library".
 comic-reader/
 ├── index.html          # library + reader screens
 ├── manifest.json        # PWA manifest
+├── sw.js                 # service worker: precaches app shell for install/offline
+├── icons/                 # PWA icons (192/512/maskable/apple-touch)
 ├── css/
 │   └── styles.css
 └── js/
     ├── drive-api.js      # fetchFileBlob / fetchFileMeta / listPdfInFolder
     ├── library.js         # localStorage-backed library + settings + progress
-    ├── pdf-reader.js       # pdf.js render -> ordered page object URLs
-    └── app.js               # screen wiring / event handlers
+    ├── blob-store.js       # IndexedDB-backed persistent PDF blob cache
+    ├── pdf-reader.js         # pdf.js render -> ordered page object URLs
+    └── app.js                 # screen wiring / event handlers
 ```
 
 ## What's implemented so far
@@ -79,11 +82,37 @@ comic-reader/
   left/right or arrow-key page turning, remembers last page read per comic.
 - Add-comic field accepts a bare file ID or a full `drive.google.com/file/d/.../view`
   link.
+- **Persistent PDF cache (`js/blob-store.js`)** — the first time a comic is
+  opened or downloaded, its raw PDF bytes are written to IndexedDB, keyed
+  by Drive file ID. Every subsequent open/download for that comic reads
+  from IndexedDB instead of re-fetching from Drive — this survives page
+  reloads and browser restarts, unlike the plain in-memory cache. A small
+  green checkmark badge appears on a library card once it's cached this
+  way.
+- **Download to device** — a download button on each library card (and
+  in the reader top bar) fetches the PDF (reusing the IndexedDB cache when
+  available) and triggers a native browser download to the device's
+  Downloads folder via a blob URL. This is a *separate* copy from the
+  IndexedDB cache — it's a plain file on disk that the app can't read back
+  in, since browsers don't allow websites to access arbitrary files in the
+  Downloads folder. If you want the app itself to avoid re-fetching, that's
+  what the IndexedDB cache above is for.
+- **Installable PWA (`sw.js` + `manifest.json` + `icons/`)** — the app now
+  registers a service worker that precaches the shell (HTML/CSS/JS and
+  pdf.js from the CDN) on first load. This makes Gutter installable:
+  Chrome/Edge on desktop show an install icon in the address bar, and
+  "Add to Home Screen" on Android/iOS puts a real app icon on the device
+  that opens in `standalone` display mode (no browser chrome). The service
+  worker only caches the app's own code — it never touches Drive API
+  responses, so it can't cause a stale/expired-file issue when reading
+  comics. Comic data offline-availability is handled separately by the
+  IndexedDB cache above.
 
 ## Not yet done / natural next steps
 
-- Service worker (offline shell caching) — manifest is in place but there's
-  no `sw.js` yet.
+- No storage-quota UI — `totalCachedBytes()` exists in `blob-store.js` but
+  isn't shown anywhere yet; a "storage used / clear cache" section in
+  settings would be a natural addition given comics can add up.
 - `listPdfInFolder` isn't wired to a "browse folder" UI — this would let
   you point Gutter at your Ultimate Spider-man folder instead of adding
   issues one at a time.

@@ -222,6 +222,23 @@ input::placeholder { color: var(--paper-dim); }
   border-radius: 2px;
 }
 
+.comic-card__offline {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--ink);
+  border: 1px solid #4caf6b;
+  color: #4caf6b;
+  font-size: 0.65rem;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .comic-card__meta {
   display: flex;
   align-items: flex-start;
