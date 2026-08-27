@@ -130,4 +130,39 @@ async function hasBlob(fileId) {
   }
 }
 
-export { putBlob, getBlob, deleteBlob, totalCachedBytes, hasBlob };
+/**
+ * Delete cached blobs in bulk, used by the "Clear cache" control in
+ * Settings. Any fileId in `keepIds` is left untouched — this protects
+ * locally-imported comics, whose IndexedDB entry is their *only* copy,
+ * from being wiped out by a control that's meant to reclaim space from
+ * re-fetchable Drive caches.
+ * @param {Iterable<string>} [keepIds]
+ * @returns {Promise<number>} number of entries actually deleted
+ */
+async function clearBlobs(keepIds = []) {
+  const keep = new Set(keepIds);
+  try {
+    const db = await openDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAllKeys();
+      let deleted = 0;
+      req.onsuccess = () => {
+        (req.result || []).forEach((key) => {
+          if (!keep.has(key)) {
+            store.delete(key);
+            deleted += 1;
+          }
+        });
+      };
+      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve(deleted);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    return 0;
+  }
+}
+
+export { putBlob, getBlob, deleteBlob, totalCachedBytes, hasBlob, clearBlobs };

@@ -6,7 +6,7 @@ import {
   loadSettings, saveSettings,
 } from './library.js';
 import { openPdf } from './pdf-reader.js';
-import { getBlob as getCachedBlob, putBlob as cacheBlob, deleteBlob as deleteCachedBlob, hasBlob } from './blob-store.js';
+import { getBlob as getCachedBlob, putBlob as cacheBlob, deleteBlob as deleteCachedBlob, hasBlob, totalCachedBytes, clearBlobs } from './blob-store.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -17,7 +17,8 @@ const screens = {
 };
 
 let settings = loadSettings();
-let activeSession = null; // { pages, entryNames, revoke, comic }
+let activeSession = null; // { pdfSession, comic, currentIndex }
+let navToken = 0; // bumped on every navigation so a stale in-flight render can't clobber a newer one
 
 // In-memory cache of raw PDF blobs, keyed by Drive file ID — a fast
 // first stop before checking the persistent IndexedDB store (blob-store.js).
@@ -69,6 +70,7 @@ function init() {
   bindLibraryEvents();
   bindReaderEvents();
   bindConnectivityBadge();
+  bindStoragePanel();
   showScreen('library');
 }
 
@@ -82,6 +84,62 @@ function bindConnectivityBadge() {
   window.addEventListener('online', update);
   window.addEventListener('offline', update);
   update();
+}
+
+// ---------- storage management ----------
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return mb < 100 ? `${mb.toFixed(1)} MB` : `${Math.round(mb)} MB`;
+}
+
+async function refreshStorageUsage() {
+  const usageEl = $('#storage-usage');
+  const total = await totalCachedBytes();
+  const comicCount = loadLibrary().length;
+  usageEl.textContent = comicCount
+    ? `${formatBytes(total)} cached across ${comicCount} comic${comicCount === 1 ? '' : 's'}.`
+    : `${formatBytes(total)} cached.`;
+}
+
+function bindStoragePanel() {
+  refreshStorageUsage();
+
+  $('#clear-cache-btn').addEventListener('click', async () => {
+    const status = $('#clear-cache-status');
+    const localIds = loadLibrary()
+      .filter((c) => c.source === 'local')
+      .map((c) => c.fileId);
+
+    if (!confirm(
+      'Clear cached Drive comics from this device? They\'ll re-download next time you open them. ' +
+      'Comics added from this device are kept.'
+    )) {
+      return;
+    }
+
+    const btn = $('#clear-cache-btn');
+    btn.disabled = true;
+    status.textContent = 'Clearing…';
+    try {
+      const deleted = await clearBlobs(localIds);
+      // Drop the in-memory copies too, but keep local comics' blobs cached
+      // in memory since we didn't touch their IndexedDB entry.
+      for (const key of blobCache.keys()) {
+        if (!localIds.includes(key)) blobCache.delete(key);
+      }
+      status.textContent = deleted ? `Cleared ${deleted} cached comic${deleted === 1 ? '' : 's'}.` : 'Nothing to clear.';
+      await refreshStorageUsage();
+      renderLibrary();
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    } catch {
+      status.textContent = "Couldn't clear cache.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 // Accepts either a bare Drive file ID or a full share link and pulls
@@ -120,6 +178,8 @@ function renderLibrary() {
       grid.appendChild(card);
       markOfflineBadgeWhenCached(comic.fileId, card);
     });
+
+  refreshStorageUsage();
 }
 
 // Checking IndexedDB is async, so the offline badge is added after the
@@ -282,17 +342,15 @@ async function openComic(fileId) {
         : `Downloading "${comic.title}"…`);
     });
 
-    setLoading(true, 'Rendering pages…');
-    const { pages, entryNames, revoke } = await openPdf(blob, (rendered, total) => {
-      setLoading(true, `Rendering page ${rendered} of ${total}…`);
-    });
+    setLoading(true, 'Opening comic…');
+    const pdfSession = await openPdf(blob);
 
-    if (activeSession) activeSession.revoke();
-    activeSession = { pages, entryNames, revoke, comic };
+    if (activeSession) activeSession.pdfSession.revoke();
+    activeSession = { pdfSession, comic, currentIndex: 0 };
 
     $('#reader-title').textContent = comic.title;
-    goToPage(getProgress(fileId));
     setLoading(false);
+    await goToPage(getProgress(fileId));
     refreshOfflineBadge(fileId);
   } catch (err) {
     setLoading(false);
@@ -378,13 +436,34 @@ function setLoading(isLoading, message = '') {
 
 function goToPage(index) {
   if (!activeSession) return;
-  const { pages, comic } = activeSession;
-  const clamped = Math.max(0, Math.min(index, pages.length - 1));
+  const { pdfSession, comic } = activeSession;
+  const clamped = Math.max(0, Math.min(index, pdfSession.numPages - 1));
 
-  $('#reader-page-img').src = pages[clamped];
-  $('#reader-page-count').textContent = `${clamped + 1} / ${pages.length}`;
   activeSession.currentIndex = clamped;
   setProgress(comic.fileId, clamped);
+  $('#reader-page-count').textContent = `${clamped + 1} / ${pdfSession.numPages}`;
+
+  const myToken = ++navToken;
+  const wrap = $('#reader-page-wrap');
+  wrap.classList.add('is-page-loading');
+
+  return pdfSession.getPage(clamped + 1)
+    .then((url) => {
+      if (myToken !== navToken) return; // superseded by a newer navigation
+      $('#reader-page-img').src = url;
+    })
+    .catch(() => {
+      if (myToken !== navToken) return;
+      $('#reader-error').textContent = 'Could not render this page.';
+      $('#reader-error').hidden = false;
+    })
+    .finally(() => {
+      if (myToken === navToken) wrap.classList.remove('is-page-loading');
+      // Read ahead a couple pages in the background so turning the page
+      // usually finds it already rendered.
+      pdfSession.prefetch(clamped + 2);
+      pdfSession.prefetch(clamped + 3);
+    });
 }
 
 function bindReaderEvents() {
@@ -419,7 +498,7 @@ function stepPage(delta) {
 }
 
 function closeReader() {
-  if (activeSession) activeSession.revoke();
+  if (activeSession) activeSession.pdfSession.revoke();
   activeSession = null;
   showScreen('library');
   renderLibrary();

@@ -140,6 +140,20 @@ input::placeholder { color: var(--paper-dim); }
 
 .btn--secondary:hover { border-color: var(--paper); }
 
+.btn--danger {
+  background: var(--panel);
+  border-color: #b3392f;
+  color: #e5695c;
+}
+
+.btn--danger:hover { background: #b3392f; color: var(--ink); }
+
+.storage-usage {
+  font-size: 0.9rem;
+  color: var(--paper);
+  margin: 0;
+}
+
 .add-local {
   margin: 0 20px 20px;
   display: grid;
@@ -421,6 +435,31 @@ input::placeholder { color: var(--paper-dim); }
   object-fit: contain;
   user-select: none;
   -webkit-user-drag: none;
+  transition: opacity 0.1s ease;
+}
+
+.reader-page-wrap.is-page-loading #reader-page-img {
+  opacity: 0.35;
+}
+
+#reader-page-img:not([src]),
+#reader-page-img[src=""] {
+  opacity: 0 !important;
+}
+
+.reader-page-wrap.is-page-loading::after {
+  content: '';
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--paper);
+  animation: reader-page-spin 0.7s linear infinite;
+}
+
+@keyframes reader-page-spin {
+  to { transform: rotate(360deg); }
 }
 
 .reader-nav-btn {

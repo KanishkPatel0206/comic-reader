@@ -55,6 +55,22 @@
         </div>
       </details>
 
+      <details class="settings-panel">
+        <summary>Storage</summary>
+        <div class="settings-panel__body">
+          <p id="storage-usage" class="storage-usage">Checking cache size…</p>
+          <div>
+            <button id="clear-cache-btn" class="btn btn--danger" type="button">Clear cache</button>
+            <span id="clear-cache-status" class="status-line" style="display:inline-block;margin-left:8px;"></span>
+          </div>
+          <p class="settings-panel__hint">
+            Frees space by deleting cached copies of Drive comics from this device — they'll simply
+            re-download next time you open them. Comics <strong>added from this device</strong> are
+            never touched by this, since their cached copy is the only copy that exists.
+          </p>
+        </div>
+      </details>
+
       <div id="library-grid" class="library-grid"></div>
       <p id="library-empty" class="library-empty" hidden>
         No comics yet. Paste a Drive file ID above to add your first one.

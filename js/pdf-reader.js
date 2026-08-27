@@ -1,7 +1,10 @@
 // js/pdf-reader.js
-// Renders each page of a PDF (fetched as a Blob from Drive) to a JPEG,
-// so the rest of the app can treat it exactly like a CBZ's unpacked pages —
-// same {pages, entryNames, revoke} shape as the old reader.js.
+// Opens a PDF (fetched as a Blob from Drive, or from a local import) and
+// renders pages to JPEG on demand rather than all at once up front. On a
+// long or high-res comic, rendering every page before the reader opens
+// could take a long time; lazy rendering means the reader opens as soon
+// as the PDF document itself is parsed, and each page renders the moment
+// it's actually needed (plus a couple pages of read-ahead prefetch).
 
 const PAGE_TARGET_WIDTH = 1600; // render at roughly this pixel width for crisp screens
 const MIN_SCALE = 1;
@@ -9,10 +12,15 @@ const MAX_SCALE = 3;
 
 /**
  * @param {Blob} blob  Raw PDF file bytes
- * @param {(rendered:number, total:number)=>void} [onProgress]
- * @returns {Promise<{pages: string[], entryNames: string[], revoke: () => void}>}
+ * @returns {Promise<{
+ *   numPages: number,
+ *   entryNames: string[],
+ *   getPage: (pageNum: number) => Promise<string>,
+ *   prefetch: (pageNum: number) => void,
+ *   revoke: () => void,
+ * }>}
  */
-async function openPdf(blob, onProgress) {
+async function openPdf(blob) {
   if (!window.pdfjsLib) {
     throw new Error('PDF engine failed to load. Check your connection and reload.');
   }
@@ -25,40 +33,71 @@ async function openPdf(blob, onProgress) {
     throw new Error("Couldn't read this as a PDF. Double-check the file isn't corrupted or actually some other format.");
   }
 
-  const total = pdf.numPages;
-  if (total === 0) {
+  const numPages = pdf.numPages;
+  if (numPages === 0) {
     throw new Error('This PDF has no pages.');
   }
 
-  const pages = [];
-  const entryNames = [];
+  const entryNames = Array.from({ length: numPages }, (_, i) => `page-${String(i + 1).padStart(3, '0')}`);
 
-  for (let i = 1; i <= total; i++) {
-    const page = await pdf.getPage(i);
-    const baseViewport = page.getViewport({ scale: 1 });
-    const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, PAGE_TARGET_WIDTH / baseViewport.width));
-    const viewport = page.getViewport({ scale });
+  // Object URLs for pages already rendered, keyed by 1-based page number.
+  const urlCache = new Map();
+  // In-flight render promises, so a prefetch and an on-screen request for
+  // the same page share one render instead of racing to render it twice.
+  const pending = new Map();
 
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(viewport.width);
-    canvas.height = Math.round(viewport.height);
-    const ctx = canvas.getContext('2d');
+  async function renderPage(pageNum) {
+    if (urlCache.has(pageNum)) return urlCache.get(pageNum);
+    if (pending.has(pageNum)) return pending.get(pageNum);
 
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    const job = (async () => {
+      const page = await pdf.getPage(pageNum);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, PAGE_TARGET_WIDTH / baseViewport.width));
+      const viewport = page.getViewport({ scale });
 
-    const imageBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-    pages.push(URL.createObjectURL(imageBlob));
-    entryNames.push(`page-${String(i).padStart(3, '0')}`);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      const ctx = canvas.getContext('2d');
 
-    page.cleanup();
-    onProgress?.(i, total);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const imageBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+      const url = URL.createObjectURL(imageBlob);
+
+      urlCache.set(pageNum, url);
+      page.cleanup();
+      return url;
+    })();
+
+    pending.set(pageNum, job);
+    try {
+      return await job;
+    } finally {
+      pending.delete(pageNum);
+    }
+  }
+
+  /**
+   * Render a page in the background without making the caller wait —
+   * used for read-ahead. Out-of-range page numbers and errors are
+   * silently ignored, since a failed prefetch just means the page
+   * renders on-demand instead when the reader actually reaches it.
+   */
+  function prefetch(pageNum) {
+    if (pageNum < 1 || pageNum > numPages) return;
+    renderPage(pageNum).catch(() => {});
   }
 
   return {
-    pages,
+    numPages,
     entryNames,
+    getPage: renderPage,
+    prefetch,
     revoke() {
-      pages.forEach((url) => URL.revokeObjectURL(url));
+      urlCache.forEach((url) => URL.revokeObjectURL(url));
+      urlCache.clear();
+      pending.clear();
     },
   };
 }
