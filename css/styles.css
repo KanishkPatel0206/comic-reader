@@ -257,6 +257,16 @@ input::placeholder { color: var(--paper-dim); }
   color: var(--line);
 }
 
+.comic-card__thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.comic-card__cover.has-thumb .comic-card__initial { display: none; }
+
 .comic-card__badge {
   position: absolute;
   bottom: 6px;

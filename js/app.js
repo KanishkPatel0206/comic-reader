@@ -6,7 +6,10 @@ import {
   loadSettings, saveSettings,
 } from './library.js';
 import { openPdf } from './pdf-reader.js';
-import { getBlob as getCachedBlob, putBlob as cacheBlob, deleteBlob as deleteCachedBlob, hasBlob, totalCachedBytes, clearBlobs } from './blob-store.js';
+import {
+  getBlob as getCachedBlob, putBlob as cacheBlob, deleteBlob as deleteCachedBlob, hasBlob, totalCachedBytes, clearBlobs,
+  getThumbnail as getCachedThumbnail, putThumbnail as cacheThumbnail, deleteThumbnail as deleteCachedThumbnail,
+} from './blob-store.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -25,6 +28,12 @@ let navToken = 0; // bumped on every navigation so a stale in-flight render can'
 // Populated whenever a comic is opened or downloaded. Cleared on reload;
 // the IndexedDB layer is what survives across sessions.
 const blobCache = new Map();
+
+// In-memory object URLs for library-card thumbnails, keyed by Drive file
+// ID. Populated from IndexedDB on render, or freshly generated the first
+// time a comic is opened (see generateThumbnailIfMissing). Cleared on
+// reload; the IndexedDB layer (blob-store.js) is what persists.
+const thumbUrlCache = new Map();
 
 // Resolves a PDF blob for a comic, checking the in-memory cache, then the
 // persistent IndexedDB store, and — for Drive-backed comics only — Drive
@@ -177,6 +186,7 @@ function renderLibrary() {
       const card = renderComicCard(comic);
       grid.appendChild(card);
       markOfflineBadgeWhenCached(comic.fileId, card);
+      loadThumbnailForCard(comic.fileId, card);
     });
 
   refreshStorageUsage();
@@ -205,6 +215,57 @@ function refreshOfflineBadge(fileId) {
   const cover = document.querySelector(`[data-open="${fileId}"]`);
   const card = cover?.closest('.comic-card');
   if (card) markOfflineBadgeWhenCached(fileId, card);
+}
+
+// Checking IndexedDB is async, so the thumbnail is swapped in after the
+// card is already in the DOM (showing the initial-letter placeholder)
+// rather than blocking the initial render.
+function loadThumbnailForCard(fileId, card) {
+  const cached = thumbUrlCache.get(fileId);
+  if (cached) {
+    applyThumbnailToCard(card, cached);
+    return;
+  }
+  getCachedThumbnail(fileId).then((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    thumbUrlCache.set(fileId, url);
+    applyThumbnailToCard(card, url);
+  });
+}
+
+function applyThumbnailToCard(card, url) {
+  const cover = card.querySelector('.comic-card__cover');
+  if (!cover || cover.querySelector('.comic-card__thumb')) return;
+  const img = document.createElement('img');
+  img.className = 'comic-card__thumb';
+  img.src = url;
+  img.alt = '';
+  img.loading = 'lazy';
+  cover.prepend(img);
+  cover.classList.add('has-thumb');
+}
+
+// Renders (if needed) and caches a page-1 thumbnail for a comic the first
+// time it's opened. Runs in the background — never awaited by the caller —
+// so it can't delay the reader opening. Safe to call every time a comic
+// opens; it's a no-op once a thumbnail already exists in memory or disk.
+async function generateThumbnailIfMissing(fileId, pdfSession) {
+  if (thumbUrlCache.has(fileId)) return;
+  const existing = await getCachedThumbnail(fileId);
+  if (existing) {
+    thumbUrlCache.set(fileId, URL.createObjectURL(existing));
+    return;
+  }
+  const blob = await pdfSession.renderThumbnail();
+  if (!blob) return;
+  thumbUrlCache.set(fileId, URL.createObjectURL(blob));
+  const card = document.querySelector(`[data-open="${fileId}"]`)?.closest('.comic-card');
+  if (card) applyThumbnailToCard(card, thumbUrlCache.get(fileId));
+  cacheThumbnail(fileId, blob).catch(() => {
+    // Opportunistic — losing this just means the thumbnail regenerates
+    // next time the comic is opened.
+  });
 }
 
 function renderComicCard(comic) {
@@ -275,6 +336,12 @@ function bindLibraryEvents() {
         removeComic(removeId);
         blobCache.delete(removeId);
         deleteCachedBlob(removeId);
+        deleteCachedThumbnail(removeId);
+        const thumbUrl = thumbUrlCache.get(removeId);
+        if (thumbUrl) {
+          URL.revokeObjectURL(thumbUrl);
+          thumbUrlCache.delete(removeId);
+        }
         renderLibrary();
       }
     }
@@ -347,6 +414,7 @@ async function openComic(fileId) {
 
     if (activeSession) activeSession.pdfSession.revoke();
     activeSession = { pdfSession, comic, currentIndex: 0 };
+    generateThumbnailIfMissing(fileId, pdfSession); // fire-and-forget, never blocks the reader
 
     $('#reader-title').textContent = comic.title;
     setLoading(false);

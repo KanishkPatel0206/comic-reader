@@ -7,7 +7,8 @@
 
 const DB_NAME = 'comicreader.blobs.v1';
 const STORE_NAME = 'pdfs';
-const DB_VERSION = 1;
+const THUMB_STORE_NAME = 'thumbs';
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -23,6 +24,9 @@ function openDb() {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME); // keyPath: none, key passed explicitly
+      }
+      if (!db.objectStoreNames.contains(THUMB_STORE_NAME)) {
+        db.createObjectStore(THUMB_STORE_NAME); // small page-1 preview JPEGs, keyed by fileId
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -165,4 +169,57 @@ async function clearBlobs(keepIds = []) {
   }
 }
 
-export { putBlob, getBlob, deleteBlob, totalCachedBytes, hasBlob, clearBlobs };
+export { putBlob, getBlob, deleteBlob, totalCachedBytes, hasBlob, clearBlobs, putThumbnail, getThumbnail, deleteThumbnail };
+
+/**
+ * Store a small page-1 preview JPEG for a comic's library card. Kept in a
+ * separate object store from the full PDF blobs — thumbnails are tiny
+ * (tens of KB) and deliberately untouched by clearBlobs()/"Clear cache",
+ * so the library stays scannable even right after a cache purge.
+ * @param {string} fileId
+ * @param {Blob} blob
+ */
+async function putThumbnail(fileId, blob) {
+  const db = await openDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(THUMB_STORE_NAME, 'readwrite');
+    tx.objectStore(THUMB_STORE_NAME).put(blob, fileId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/**
+ * @param {string} fileId
+ * @returns {Promise<Blob|null>}
+ */
+async function getThumbnail(fileId) {
+  try {
+    const db = await openDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(THUMB_STORE_NAME, 'readonly');
+      const req = tx.objectStore(THUMB_STORE_NAME).get(fileId);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {string} fileId
+ */
+async function deleteThumbnail(fileId) {
+  try {
+    const db = await openDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(THUMB_STORE_NAME, 'readwrite');
+      tx.objectStore(THUMB_STORE_NAME).delete(fileId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    // best-effort cleanup; ignore failures
+  }
+}
