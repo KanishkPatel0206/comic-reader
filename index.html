@@ -40,6 +40,26 @@
       </div>
 
       <details class="settings-panel">
+        <summary>Browse a Drive folder</summary>
+        <div class="settings-panel__body">
+          <div class="add-comic__row">
+            <input id="browse-folder-id" type="text" placeholder="Drive folder ID or share link" autocomplete="off" />
+            <button id="browse-folder-btn" class="btn" type="button">Browse</button>
+          </div>
+          <p id="browse-folder-status" class="status-line"></p>
+          <div id="browse-folder-results" class="folder-results" hidden>
+            <div class="folder-results__toolbar">
+              <label class="folder-results__select-all">
+                <input id="browse-select-all" type="checkbox" /> Select all
+              </label>
+              <button id="browse-add-selected" class="btn btn--primary" type="button" disabled>Add selected</button>
+            </div>
+            <ul id="browse-folder-list" class="folder-results__list"></ul>
+          </div>
+        </div>
+      </details>
+
+      <details class="settings-panel">
         <summary>Drive API key</summary>
         <div class="settings-panel__body">
           <input id="api-key-input" type="password" placeholder="Paste your Drive API key" autocomplete="off" />
@@ -112,6 +132,18 @@
         navigator.serviceWorker.register('./sw.js').catch((err) => {
           console.warn('Gutter: service worker registration failed', err);
         });
+      });
+
+      // When a new service worker takes over (e.g. after a deploy bumps
+      // CACHE_VERSION in sw.js), the page is still running the *old*
+      // cached JS until it reloads. Reload once, automatically, so an
+      // update is actually visible instead of silently doing nothing
+      // until the user manually hard-refreshes.
+      let hasReloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (hasReloaded) return;
+        hasReloaded = true;
+        window.location.reload();
       });
     }
   </script>
