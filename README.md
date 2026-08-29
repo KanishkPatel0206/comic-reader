@@ -121,11 +121,14 @@ comic-reader/
   caches the app's own code — it never touches Drive API responses, so it
   can't cause a stale/expired-file issue when reading comics.
 
+- **Storage usage + clear cache** — a "Storage" panel in settings shows
+  total bytes cached in IndexedDB and a "Free up space" button. It only
+  clears Drive-backed comics (they simply re-download next time they're
+  opened) — device-imported comics are left alone since IndexedDB is their
+  only copy.
+
 ## Not yet done / natural next steps
 
-- No storage-quota UI — `totalCachedBytes()` exists in `blob-store.js` but
-  isn't shown anywhere yet; a "storage used / clear cache" section in
-  settings would be a natural addition given comics can add up.
 - `listPdfInFolder` isn't wired to a "browse folder" UI — this would let
   you point Gutter at your Ultimate Spider-man folder instead of adding
   issues one at a time.

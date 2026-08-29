@@ -4,10 +4,14 @@
 // Drive on every visit. localStorage can't hold binary blobs of this size
 // (and has a ~5MB ceiling); IndexedDB has no such practical limit and is
 // built for exactly this.
+//
+// A second object store holds small low-res cover thumbnails (rendered
+// from each comic's first page, the first time it's opened) so the library
+// grid can show real cover art instead of a placeholder initial.
 
 const DB_NAME = 'comicreader.blobs.v1';
 const STORE_NAME = 'pdfs';
-const THUMB_STORE_NAME = 'thumbs';
+const THUMB_STORE_NAME = 'thumbnails';
 const DB_VERSION = 2;
 
 let dbPromise = null;
@@ -26,7 +30,7 @@ function openDb() {
         db.createObjectStore(STORE_NAME); // keyPath: none, key passed explicitly
       }
       if (!db.objectStoreNames.contains(THUMB_STORE_NAME)) {
-        db.createObjectStore(THUMB_STORE_NAME); // small page-1 preview JPEGs, keyed by fileId
+        db.createObjectStore(THUMB_STORE_NAME); // keyPath: none, key passed explicitly
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -135,47 +139,10 @@ async function hasBlob(fileId) {
 }
 
 /**
- * Delete cached blobs in bulk, used by the "Clear cache" control in
- * Settings. Any fileId in `keepIds` is left untouched — this protects
- * locally-imported comics, whose IndexedDB entry is their *only* copy,
- * from being wiped out by a control that's meant to reclaim space from
- * re-fetchable Drive caches.
- * @param {Iterable<string>} [keepIds]
- * @returns {Promise<number>} number of entries actually deleted
- */
-async function clearBlobs(keepIds = []) {
-  const keep = new Set(keepIds);
-  try {
-    const db = await openDb();
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.getAllKeys();
-      let deleted = 0;
-      req.onsuccess = () => {
-        (req.result || []).forEach((key) => {
-          if (!keep.has(key)) {
-            store.delete(key);
-            deleted += 1;
-          }
-        });
-      };
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => resolve(deleted);
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch {
-    return 0;
-  }
-}
-
-export { putBlob, getBlob, deleteBlob, totalCachedBytes, hasBlob, clearBlobs, putThumbnail, getThumbnail, deleteThumbnail };
-
-/**
- * Store a small page-1 preview JPEG for a comic's library card. Kept in a
- * separate object store from the full PDF blobs — thumbnails are tiny
- * (tens of KB) and deliberately untouched by clearBlobs()/"Clear cache",
- * so the library stays scannable even right after a cache purge.
+ * Store a low-res cover thumbnail (JPEG Blob) for a comic, so it doesn't
+ * need to be re-rendered from the PDF on every library visit. Best-effort:
+ * callers should treat failures as non-fatal, since the worst case is just
+ * falling back to the placeholder initial on the library card.
  * @param {string} fileId
  * @param {Blob} blob
  */
@@ -190,6 +157,8 @@ async function putThumbnail(fileId, blob) {
 }
 
 /**
+ * Retrieve a previously cached cover thumbnail, or null if none exists yet
+ * (e.g. the comic hasn't been opened for the first time) / on error.
  * @param {string} fileId
  * @returns {Promise<Blob|null>}
  */
@@ -208,6 +177,8 @@ async function getThumbnail(fileId) {
 }
 
 /**
+ * Remove a cached thumbnail, e.g. when the comic is removed from the
+ * library.
  * @param {string} fileId
  */
 async function deleteThumbnail(fileId) {
@@ -223,3 +194,8 @@ async function deleteThumbnail(fileId) {
     // best-effort cleanup; ignore failures
   }
 }
+
+export {
+  putBlob, getBlob, deleteBlob, totalCachedBytes, hasBlob,
+  putThumbnail, getThumbnail, deleteThumbnail,
+};

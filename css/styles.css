@@ -140,20 +140,6 @@ input::placeholder { color: var(--paper-dim); }
 
 .btn--secondary:hover { border-color: var(--paper); }
 
-.btn--danger {
-  background: var(--panel);
-  border-color: #b3392f;
-  color: #e5695c;
-}
-
-.btn--danger:hover { background: #b3392f; color: var(--ink); }
-
-.storage-usage {
-  font-size: 0.9rem;
-  color: var(--paper);
-  margin: 0;
-}
-
 .add-local {
   margin: 0 20px 20px;
   display: grid;
@@ -263,9 +249,8 @@ input::placeholder { color: var(--paper-dim); }
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 1px;
 }
-
-.comic-card__cover.has-thumb .comic-card__initial { display: none; }
 
 .comic-card__badge {
   position: absolute;
@@ -445,31 +430,6 @@ input::placeholder { color: var(--paper-dim); }
   object-fit: contain;
   user-select: none;
   -webkit-user-drag: none;
-  transition: opacity 0.1s ease;
-}
-
-.reader-page-wrap.is-page-loading #reader-page-img {
-  opacity: 0.35;
-}
-
-#reader-page-img:not([src]),
-#reader-page-img[src=""] {
-  opacity: 0 !important;
-}
-
-.reader-page-wrap.is-page-loading::after {
-  content: '';
-  position: absolute;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 3px solid var(--line);
-  border-top-color: var(--paper);
-  animation: reader-page-spin 0.7s linear infinite;
-}
-
-@keyframes reader-page-spin {
-  to { transform: rotate(360deg); }
 }
 
 .reader-nav-btn {
@@ -494,4 +454,22 @@ input::placeholder { color: var(--paper-dim); }
 
 .reader-nav-btn span {
   font-size: 1.8rem;
+}
+
+.reader-page-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--line);
+  border-top-color: var(--focus);
+  border-radius: 50%;
+  animation: reader-spin 0.8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes reader-spin {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
 }

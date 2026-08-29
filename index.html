@@ -40,26 +40,6 @@
       </div>
 
       <details class="settings-panel">
-        <summary>Browse a Drive folder</summary>
-        <div class="settings-panel__body">
-          <div class="add-comic__row">
-            <input id="browse-folder-id" type="text" placeholder="Drive folder ID or share link" autocomplete="off" />
-            <button id="browse-folder-btn" class="btn" type="button">Browse</button>
-          </div>
-          <p id="browse-folder-status" class="status-line"></p>
-          <div id="browse-folder-results" class="folder-results" hidden>
-            <div class="folder-results__toolbar">
-              <label class="folder-results__select-all">
-                <input id="browse-select-all" type="checkbox" /> Select all
-              </label>
-              <button id="browse-add-selected" class="btn btn--primary" type="button" disabled>Add selected</button>
-            </div>
-            <ul id="browse-folder-list" class="folder-results__list"></ul>
-          </div>
-        </div>
-      </details>
-
-      <details class="settings-panel">
         <summary>Drive API key</summary>
         <div class="settings-panel__body">
           <input id="api-key-input" type="password" placeholder="Paste your Drive API key" autocomplete="off" />
@@ -78,15 +58,15 @@
       <details class="settings-panel">
         <summary>Storage</summary>
         <div class="settings-panel__body">
-          <p id="storage-usage" class="storage-usage">Checking cache size…</p>
+          <p id="storage-used" class="settings-panel__hint" style="margin:0;">Calculating…</p>
           <div>
-            <button id="clear-cache-btn" class="btn btn--danger" type="button">Clear cache</button>
+            <button id="clear-cache-btn" class="btn" type="button">Free up space</button>
             <span id="clear-cache-status" class="status-line" style="display:inline-block;margin-left:8px;"></span>
           </div>
           <p class="settings-panel__hint">
-            Frees space by deleting cached copies of Drive comics from this device — they'll simply
-            re-download next time you open them. Comics <strong>added from this device</strong> are
-            never touched by this, since their cached copy is the only copy that exists.
+            Removes downloaded copies of Drive-backed comics from this device — they'll
+            simply re-download next time you open them. Comics added from "this device"
+            are <strong>not</strong> touched, since their only copy lives here.
           </p>
         </div>
       </details>
@@ -114,6 +94,7 @@
       <div id="reader-page-wrap" class="reader-page-wrap">
         <button class="reader-nav-btn reader-nav-btn--prev" id="reader-prev" aria-label="Previous page"><span>‹</span></button>
         <img id="reader-page-img" alt="Comic page" draggable="false" />
+        <div id="reader-page-spinner" class="reader-page-spinner" hidden aria-hidden="true"></div>
         <button class="reader-nav-btn reader-nav-btn--next" id="reader-next" aria-label="Next page"><span>›</span></button>
       </div>
     </section>
@@ -132,18 +113,6 @@
         navigator.serviceWorker.register('./sw.js').catch((err) => {
           console.warn('Gutter: service worker registration failed', err);
         });
-      });
-
-      // When a new service worker takes over (e.g. after a deploy bumps
-      // CACHE_VERSION in sw.js), the page is still running the *old*
-      // cached JS until it reloads. Reload once, automatically, so an
-      // update is actually visible instead of silently doing nothing
-      // until the user manually hard-refreshes.
-      let hasReloaded = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (hasReloaded) return;
-        hasReloaded = true;
-        window.location.reload();
       });
     }
   </script>

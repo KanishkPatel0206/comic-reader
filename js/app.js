@@ -5,10 +5,10 @@ import {
   getProgress, setProgress,
   loadSettings, saveSettings,
 } from './library.js';
-import { openPdf } from './pdf-reader.js';
+import { openPdfSession, renderThumbnail } from './pdf-reader.js';
 import {
-  getBlob as getCachedBlob, putBlob as cacheBlob, deleteBlob as deleteCachedBlob, hasBlob, totalCachedBytes, clearBlobs,
-  getThumbnail as getCachedThumbnail, putThumbnail as cacheThumbnail, deleteThumbnail as deleteCachedThumbnail,
+  getBlob as getCachedBlob, putBlob as cacheBlob, deleteBlob as deleteCachedBlob, hasBlob,
+  getThumbnail, putThumbnail, deleteThumbnail, totalCachedBytes,
 } from './blob-store.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -20,20 +20,13 @@ const screens = {
 };
 
 let settings = loadSettings();
-let activeSession = null; // { pdfSession, comic, currentIndex }
-let navToken = 0; // bumped on every navigation so a stale in-flight render can't clobber a newer one
+let activeSession = null; // { session, comic, currentIndex, loadToken }
 
 // In-memory cache of raw PDF blobs, keyed by Drive file ID — a fast
 // first stop before checking the persistent IndexedDB store (blob-store.js).
 // Populated whenever a comic is opened or downloaded. Cleared on reload;
 // the IndexedDB layer is what survives across sessions.
 const blobCache = new Map();
-
-// In-memory object URLs for library-card thumbnails, keyed by Drive file
-// ID. Populated from IndexedDB on render, or freshly generated the first
-// time a comic is opened (see generateThumbnailIfMissing). Cleared on
-// reload; the IndexedDB layer (blob-store.js) is what persists.
-const thumbUrlCache = new Map();
 
 // Resolves a PDF blob for a comic, checking the in-memory cache, then the
 // persistent IndexedDB store, and — for Drive-backed comics only — Drive
@@ -83,6 +76,58 @@ function init() {
   showScreen('library');
 }
 
+// ---------- storage usage panel ----------
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+}
+
+// Refreshes the "N MB cached" line in the storage settings panel. Called
+// on boot and after anything that adds/removes a cached PDF, so the
+// number stays accurate without the user needing to reopen the panel.
+function refreshStorageUsed() {
+  const el = $('#storage-used');
+  if (!el) return;
+  totalCachedBytes().then((bytes) => {
+    const items = loadLibrary();
+    const localCount = items.filter((c) => c.source === 'local').length;
+    el.textContent = localCount > 0
+      ? `${formatBytes(bytes)} cached on this device (includes ${localCount} device-only ${localCount === 1 ? 'comic' : 'comics'}).`
+      : `${formatBytes(bytes)} cached on this device.`;
+  });
+}
+
+// "Free up space" only clears the cached PDF bytes for Drive-backed
+// comics — those can always be re-fetched from Drive on next open.
+// Locally-imported comics are deliberately skipped: IndexedDB is their
+// only copy, so clearing it would delete the comic for good.
+function bindStoragePanel() {
+  refreshStorageUsed();
+  $('#clear-cache-btn').addEventListener('click', async () => {
+    const status = $('#clear-cache-status');
+    const driveComics = loadLibrary().filter((c) => c.source !== 'local');
+    if (driveComics.length === 0) {
+      status.textContent = 'Nothing to clear.';
+      setTimeout(() => (status.textContent = ''), 2000);
+      return;
+    }
+    if (!confirm(`Remove downloaded copies of ${driveComics.length} Drive-backed comic(s)? They'll re-download next time you open them.`)) {
+      return;
+    }
+    status.textContent = 'Clearing…';
+    await Promise.all(driveComics.map((c) => {
+      blobCache.delete(c.fileId);
+      return deleteCachedBlob(c.fileId);
+    }));
+    status.textContent = 'Cleared.';
+    setTimeout(() => (status.textContent = ''), 2000);
+    refreshStorageUsed();
+    renderLibrary();
+  });
+}
+
 // Shows a small "Offline" badge in the header when the browser reports no
 // network connection — mainly so it's clear that locally-imported comics
 // and already-cached ones still work fine, while adding a *new* comic via
@@ -93,62 +138,6 @@ function bindConnectivityBadge() {
   window.addEventListener('online', update);
   window.addEventListener('offline', update);
   update();
-}
-
-// ---------- storage management ----------
-
-function formatBytes(bytes) {
-  if (!bytes) return '0 MB';
-  const mb = bytes / (1024 * 1024);
-  if (mb < 1) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return mb < 100 ? `${mb.toFixed(1)} MB` : `${Math.round(mb)} MB`;
-}
-
-async function refreshStorageUsage() {
-  const usageEl = $('#storage-usage');
-  const total = await totalCachedBytes();
-  const comicCount = loadLibrary().length;
-  usageEl.textContent = comicCount
-    ? `${formatBytes(total)} cached across ${comicCount} comic${comicCount === 1 ? '' : 's'}.`
-    : `${formatBytes(total)} cached.`;
-}
-
-function bindStoragePanel() {
-  refreshStorageUsage();
-
-  $('#clear-cache-btn').addEventListener('click', async () => {
-    const status = $('#clear-cache-status');
-    const localIds = loadLibrary()
-      .filter((c) => c.source === 'local')
-      .map((c) => c.fileId);
-
-    if (!confirm(
-      'Clear cached Drive comics from this device? They\'ll re-download next time you open them. ' +
-      'Comics added from this device are kept.'
-    )) {
-      return;
-    }
-
-    const btn = $('#clear-cache-btn');
-    btn.disabled = true;
-    status.textContent = 'Clearing…';
-    try {
-      const deleted = await clearBlobs(localIds);
-      // Drop the in-memory copies too, but keep local comics' blobs cached
-      // in memory since we didn't touch their IndexedDB entry.
-      for (const key of blobCache.keys()) {
-        if (!localIds.includes(key)) blobCache.delete(key);
-      }
-      status.textContent = deleted ? `Cleared ${deleted} cached comic${deleted === 1 ? '' : 's'}.` : 'Nothing to clear.';
-      await refreshStorageUsage();
-      renderLibrary();
-      setTimeout(() => { status.textContent = ''; }, 3000);
-    } catch {
-      status.textContent = "Couldn't clear cache.";
-    } finally {
-      btn.disabled = false;
-    }
-  });
 }
 
 // Accepts either a bare Drive file ID or a full share link and pulls
@@ -186,10 +175,28 @@ function renderLibrary() {
       const card = renderComicCard(comic);
       grid.appendChild(card);
       markOfflineBadgeWhenCached(comic.fileId, card);
-      loadThumbnailForCard(comic.fileId, card);
+      applyThumbnailWhenCached(comic.fileId, card);
     });
+}
 
-  refreshStorageUsage();
+// Swaps the placeholder initial for a real cover image if a thumbnail has
+// already been cached for this comic (rendered the first time it was
+// opened — see ensureThumbnailCached). Checking IndexedDB is async, so
+// this runs after the card is already in the DOM, same as the offline
+// badge above.
+function applyThumbnailWhenCached(fileId, card) {
+  getThumbnail(fileId).then((blob) => {
+    if (!blob) return;
+    const cover = card.querySelector('.comic-card__cover');
+    const img = cover?.querySelector('.comic-card__thumb');
+    const initial = cover?.querySelector('.comic-card__initial');
+    if (!img) return;
+    const url = URL.createObjectURL(blob);
+    img.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+    img.src = url;
+    img.hidden = false;
+    if (initial) initial.hidden = true;
+  });
 }
 
 // Checking IndexedDB is async, so the offline badge is added after the
@@ -208,64 +215,17 @@ function markOfflineBadgeWhenCached(fileId, card) {
   });
 }
 
-// Re-checks the offline badge for a single card after a fetch that may
-// have just cached the comic for the first time (e.g. after opening or
-// downloading it), so the checkmark appears without a full re-render.
+// Re-checks the offline badge and cover thumbnail for a single card after
+// a fetch/render that may have just cached something for the first time
+// (e.g. after opening or downloading a comic), so the checkmark/cover
+// appears without a full re-render. No-op if the card isn't currently in
+// the DOM (e.g. we're still on the reader screen).
 function refreshOfflineBadge(fileId) {
   const cover = document.querySelector(`[data-open="${fileId}"]`);
   const card = cover?.closest('.comic-card');
-  if (card) markOfflineBadgeWhenCached(fileId, card);
-}
-
-// Checking IndexedDB is async, so the thumbnail is swapped in after the
-// card is already in the DOM (showing the initial-letter placeholder)
-// rather than blocking the initial render.
-function loadThumbnailForCard(fileId, card) {
-  const cached = thumbUrlCache.get(fileId);
-  if (cached) {
-    applyThumbnailToCard(card, cached);
-    return;
-  }
-  getCachedThumbnail(fileId).then((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    thumbUrlCache.set(fileId, url);
-    applyThumbnailToCard(card, url);
-  });
-}
-
-function applyThumbnailToCard(card, url) {
-  const cover = card.querySelector('.comic-card__cover');
-  if (!cover || cover.querySelector('.comic-card__thumb')) return;
-  const img = document.createElement('img');
-  img.className = 'comic-card__thumb';
-  img.src = url;
-  img.alt = '';
-  img.loading = 'lazy';
-  cover.prepend(img);
-  cover.classList.add('has-thumb');
-}
-
-// Renders (if needed) and caches a page-1 thumbnail for a comic the first
-// time it's opened. Runs in the background — never awaited by the caller —
-// so it can't delay the reader opening. Safe to call every time a comic
-// opens; it's a no-op once a thumbnail already exists in memory or disk.
-async function generateThumbnailIfMissing(fileId, pdfSession) {
-  if (thumbUrlCache.has(fileId)) return;
-  const existing = await getCachedThumbnail(fileId);
-  if (existing) {
-    thumbUrlCache.set(fileId, URL.createObjectURL(existing));
-    return;
-  }
-  const blob = await pdfSession.renderThumbnail();
-  if (!blob) return;
-  thumbUrlCache.set(fileId, URL.createObjectURL(blob));
-  const card = document.querySelector(`[data-open="${fileId}"]`)?.closest('.comic-card');
-  if (card) applyThumbnailToCard(card, thumbUrlCache.get(fileId));
-  cacheThumbnail(fileId, blob).catch(() => {
-    // Opportunistic — losing this just means the thumbnail regenerates
-    // next time the comic is opened.
-  });
+  if (!card) return;
+  markOfflineBadgeWhenCached(fileId, card);
+  applyThumbnailWhenCached(fileId, card);
 }
 
 function renderComicCard(comic) {
@@ -276,6 +236,7 @@ function renderComicCard(comic) {
   card.innerHTML = `
     <button class="comic-card__cover" data-open="${comic.fileId}" aria-label="Open ${escapeHtml(comic.title)}">
       <span class="comic-card__spine"></span>
+      <img class="comic-card__thumb" alt="" draggable="false" hidden />
       <span class="comic-card__initial">${escapeHtml(comic.title.slice(0, 1).toUpperCase())}</span>
       ${progress > 0 ? `<span class="comic-card__badge">p.${progress + 1}</span>` : ''}
     </button>
@@ -336,13 +297,9 @@ function bindLibraryEvents() {
         removeComic(removeId);
         blobCache.delete(removeId);
         deleteCachedBlob(removeId);
-        deleteCachedThumbnail(removeId);
-        const thumbUrl = thumbUrlCache.get(removeId);
-        if (thumbUrl) {
-          URL.revokeObjectURL(thumbUrl);
-          thumbUrlCache.delete(removeId);
-        }
+        deleteThumbnail(removeId);
         renderLibrary();
+        refreshStorageUsed();
       }
     }
   });
@@ -381,6 +338,7 @@ function bindLibraryEvents() {
         if (status.textContent.startsWith('Added')) status.textContent = '';
       }, 3000);
       renderLibrary();
+      refreshStorageUsed();
     } catch {
       status.textContent = "Couldn't save that file — your device storage may be full.";
     }
@@ -388,6 +346,25 @@ function bindLibraryEvents() {
 }
 
 // ---------- opening + reading a comic ----------
+
+// Renders and caches a low-res cover thumbnail the first time a comic is
+// opened, if one isn't cached already. Runs in the background — it never
+// blocks or delays the reader, and failures are silently ignored since a
+// missing thumbnail just means the library card keeps its placeholder
+// initial. Once cached, refreshes the card in case the library grid is
+// (or later becomes) visible.
+async function ensureThumbnailCached(fileId, blob) {
+  try {
+    const existing = await getThumbnail(fileId);
+    if (existing) return;
+    const thumbBlob = await renderThumbnail(blob);
+    if (!thumbBlob) return;
+    await putThumbnail(fileId, thumbBlob);
+    refreshOfflineBadge(fileId);
+  } catch {
+    // best-effort; the card just keeps showing its initial letter
+  }
+}
 
 async function openComic(fileId) {
   const comic = loadLibrary().find((c) => c.fileId === fileId);
@@ -409,17 +386,23 @@ async function openComic(fileId) {
         : `Downloading "${comic.title}"…`);
     });
 
-    setLoading(true, 'Opening comic…');
-    const pdfSession = await openPdf(blob);
+    // Only the document structure is parsed here — no pages are rendered
+    // yet, so this resolves quickly even for long/high-res comics. Pages
+    // are rendered on demand as goToPage() below requests them.
+    setLoading(true, 'Opening…');
+    const session = await openPdfSession(blob);
 
-    if (activeSession) activeSession.pdfSession.revoke();
-    activeSession = { pdfSession, comic, currentIndex: 0 };
-    generateThumbnailIfMissing(fileId, pdfSession); // fire-and-forget, never blocks the reader
+    if (activeSession) activeSession.session.revoke();
+    activeSession = { session, comic, currentIndex: 0, loadToken: 0 };
 
     $('#reader-title').textContent = comic.title;
+    $('#reader-page-img').removeAttribute('src'); // old page's blob URL is now revoked; clear before it flashes as a broken image
     setLoading(false);
     await goToPage(getProgress(fileId));
     refreshOfflineBadge(fileId);
+    refreshStorageUsed();
+
+    ensureThumbnailCached(fileId, blob);
   } catch (err) {
     setLoading(false);
     const msg = err instanceof DriveApiError || err instanceof Error ? err.message : 'Something went wrong opening this file.';
@@ -481,6 +464,7 @@ async function downloadComic(fileId) {
 
     triggerDownload(blob, `${sanitizeFilename(comic.title)}.pdf`);
     refreshOfflineBadge(fileId);
+    refreshStorageUsed();
     if (statusEl) {
       statusEl.textContent = 'Saved to Downloads.';
       setTimeout(() => {
@@ -502,36 +486,40 @@ function setLoading(isLoading, message = '') {
   $('#reader-page-wrap').hidden = isLoading;
 }
 
-function goToPage(index) {
+// Renders (or grabs from cache/prefetch) the page at `index` and displays
+// it. Async because pages are now rendered lazily — a small spinner shows
+// over the page area while this particular page hasn't been rendered yet
+// (usually only noticeable on the very first page, or after jumping far
+// ahead of the prefetch window).
+async function goToPage(index) {
   if (!activeSession) return;
-  const { pdfSession, comic } = activeSession;
-  const clamped = Math.max(0, Math.min(index, pdfSession.numPages - 1));
+  const { session, comic } = activeSession;
+  const clamped = Math.max(0, Math.min(index, session.numPages - 1));
 
   activeSession.currentIndex = clamped;
   setProgress(comic.fileId, clamped);
-  $('#reader-page-count').textContent = `${clamped + 1} / ${pdfSession.numPages}`;
+  $('#reader-page-count').textContent = `${clamped + 1} / ${session.numPages}`;
 
-  const myToken = ++navToken;
-  const wrap = $('#reader-page-wrap');
-  wrap.classList.add('is-page-loading');
+  // Guards against a fast page-turn superseding an in-flight render: if
+  // the user has since moved on to a different page, this older render's
+  // result is discarded rather than flashing onto the screen out of order.
+  const token = ++activeSession.loadToken;
+  const spinner = $('#reader-page-spinner');
+  const img = $('#reader-page-img');
+  spinner.hidden = false;
+  $('#reader-error').hidden = true;
 
-  return pdfSession.getPage(clamped + 1)
-    .then((url) => {
-      if (myToken !== navToken) return; // superseded by a newer navigation
-      $('#reader-page-img').src = url;
-    })
-    .catch(() => {
-      if (myToken !== navToken) return;
-      $('#reader-error').textContent = 'Could not render this page.';
-      $('#reader-error').hidden = false;
-    })
-    .finally(() => {
-      if (myToken === navToken) wrap.classList.remove('is-page-loading');
-      // Read ahead a couple pages in the background so turning the page
-      // usually finds it already rendered.
-      pdfSession.prefetch(clamped + 2);
-      pdfSession.prefetch(clamped + 3);
-    });
+  try {
+    const url = await session.getPage(clamped);
+    if (activeSession?.loadToken !== token) return;
+    img.src = url;
+    spinner.hidden = true;
+  } catch {
+    if (activeSession?.loadToken !== token) return;
+    spinner.hidden = true;
+    $('#reader-error').textContent = 'Could not render this page.';
+    $('#reader-error').hidden = false;
+  }
 }
 
 function bindReaderEvents() {
@@ -566,7 +554,7 @@ function stepPage(delta) {
 }
 
 function closeReader() {
-  if (activeSession) activeSession.pdfSession.revoke();
+  if (activeSession) activeSession.session.revoke();
   activeSession = null;
   showScreen('library');
   renderLibrary();
