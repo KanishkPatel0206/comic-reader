@@ -1,15 +1,23 @@
-@import url('https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap');
 
 :root {
-  --ink: #121014;
-  --panel: #1b1820;
-  --panel-raised: #221e27;
-  --line: #322c38;
-  --paper: #edeae3;
-  --paper-dim: #8b8790;
-  --red: #e8483a;
-  --red-dim: #7a2c26;
-  --focus: #f0c419;
+  /* Bright, flat "Saturday-morning" cartoon palette on a warm paper
+     ground — thick black outlines carry the linework the old dark-ink
+     pulp theme used to carry with shadow instead. */
+  --bg: #fff6e6;
+  --ink: #201c22;
+  --paper: #ffffff;
+  --paper-dim: #746b78;
+  --line: #201c22;
+  --blue: #2f6fed;
+  --blue-dim: #1c4bb0;
+  --red: #ff4d4d;
+  --red-dim: #c22f2f;
+  --yellow: #ffd23f;
+  --orange: #ff8a3d;
+  --orange-dim: #d4650f;
+  --green: #2fb75d;
+  --focus: #ffd23f;
 }
 
 * { box-sizing: border-box; }
@@ -17,16 +25,17 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--ink);
-  color: var(--paper);
-  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Nunito', system-ui, sans-serif;
 }
 
 body {
-  background-image:
-    radial-gradient(var(--line) 1px, transparent 1px);
-  background-size: 14px 14px;
-  background-position: -7px -7px;
+  /* Soft polka-dot wallpaper — a cartoon-panel texture kept quiet so the
+     one loud flourish (the header burst) still reads as the highlight. */
+  background-image: radial-gradient(rgba(32, 28, 34, 0.08) 2.5px, transparent 2.5px);
+  background-size: 20px 20px;
+  background-position: -8px -8px;
 }
 
 button {
@@ -35,7 +44,7 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 3px solid var(--blue);
   outline-offset: 2px;
 }
 
@@ -53,17 +62,41 @@ button {
 /* ---------- Library ---------- */
 
 .library-header {
-  padding: 32px 20px 20px;
-  border-bottom: 3px solid var(--paper);
+  position: relative;
+  overflow: hidden;
+  padding: 34px 20px 22px;
+  background: var(--paper);
+  border-bottom: 4px solid var(--ink);
+}
+
+/* Confetti-dot burst behind the logo — the one deliberately loud flourish
+   on the screen, kept to a single corner so it stays a supporting accent
+   rather than noise. */
+.library-header::before {
+  content: '';
+  position: absolute;
+  top: -70px;
+  right: -60px;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background-image: radial-gradient(var(--yellow) 3px, transparent 3px);
+  background-size: 16px 16px;
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .library-header__title {
-  font-family: 'Anton', sans-serif;
-  font-size: clamp(2rem, 6vw, 3rem);
-  letter-spacing: 0.02em;
+  position: relative;
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  font-size: clamp(2.1rem, 6vw, 3.1rem);
+  letter-spacing: 0.01em;
   margin: 0;
-  line-height: 0.95;
-  color: var(--paper);
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: 4px 4px 0 var(--blue);
+  width: fit-content;
 }
 
 .library-header__title span {
@@ -71,15 +104,25 @@ button {
 }
 
 .library-header__sub {
-  margin: 6px 0 0;
+  position: relative;
+  margin: 12px 0 0;
   color: var(--paper-dim);
   font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.library-header__stats {
+  position: relative;
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 14px;
   padding: 16px;
 }
 
@@ -100,45 +143,56 @@ button {
 }
 
 input[type="text"], input[type="password"] {
-  background: var(--panel-raised);
-  border: 1px solid var(--line);
-  color: var(--paper);
-  padding: 10px 12px;
-  border-radius: 3px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  color: var(--ink);
+  padding: 10px 14px;
+  border-radius: 12px;
   font-size: 0.95rem;
+  font-weight: 600;
   width: 100%;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
-input::placeholder { color: var(--paper-dim); }
+input[type="text"]:focus, input[type="password"]:focus {
+  border-color: var(--blue);
+  box-shadow: 3px 3px 0 var(--blue);
+}
+
+input::placeholder { color: var(--paper-dim); font-weight: 600; }
 
 .btn {
-  border: 1px solid var(--line);
-  background: var(--panel-raised);
-  color: var(--paper);
-  padding: 10px 16px;
-  border-radius: 3px;
-  font-weight: 600;
+  border: 3px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 800;
   font-size: 0.9rem;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
-.btn:hover { border-color: var(--paper); }
+.btn:hover { transform: translate(-2px, -2px) rotate(-1deg); box-shadow: 5px 5px 0 var(--ink); }
+.btn:active { transform: translate(1px, 1px) rotate(0); box-shadow: 1px 1px 0 var(--ink); }
 
 .btn--primary {
   background: var(--red);
-  border-color: var(--red);
-  color: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
 }
 
-.btn--primary:hover { background: #f05a4d; }
+.btn--primary:hover { background: #ff6363; }
 
 .btn--secondary {
-  background: var(--panel);
-  border-color: var(--paper-dim);
+  background: var(--yellow);
+  border-color: var(--ink);
+  color: var(--ink);
   display: inline-block;
   cursor: pointer;
 }
 
-.btn--secondary:hover { border-color: var(--paper); }
+.btn--secondary:hover { background: #ffdb66; }
 
 .add-local {
   margin: 0 20px 20px;
@@ -149,44 +203,67 @@ input::placeholder { color: var(--paper-dim); }
 .add-local__hint {
   font-size: 0.78rem;
   color: var(--paper-dim);
+  font-weight: 600;
 }
 
 .connectivity-badge {
+  position: relative;
   display: inline-block;
-  margin-top: 8px;
-  padding: 3px 9px;
-  border: 1px solid #d9a441;
-  color: #d9a441;
-  border-radius: 12px;
+  margin-top: 10px;
+  padding: 4px 11px;
+  background: var(--yellow);
+  border: 2px solid var(--ink);
+  color: var(--ink);
+  border-radius: 999px;
   font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .status-line {
   min-height: 1.2em;
   font-size: 0.85rem;
   color: var(--paper-dim);
+  font-weight: 600;
 }
 
 .settings-panel {
   margin: 0 20px 20px;
-  display: grid;
-  gap: 8px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .settings-panel summary {
   cursor: pointer;
-  font-weight: 600;
-  color: var(--paper-dim);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  font-weight: 800;
+  color: var(--ink);
   font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
+.settings-panel summary::-webkit-details-marker { display: none; }
+
+.settings-panel summary::after {
+  content: '+';
+  font-family: 'Baloo 2', sans-serif;
+  font-size: 1.2rem;
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.settings-panel[open] summary { border-bottom: 3px solid var(--ink); }
+.settings-panel[open] summary::after { content: '–'; color: var(--red); }
+
 .settings-panel__body {
-  margin-top: 12px;
+  margin: 0;
+  padding: 14px 16px;
   display: grid;
   gap: 8px;
 }
@@ -196,6 +273,32 @@ input::placeholder { color: var(--paper-dim); }
   color: var(--paper-dim);
   line-height: 1.5;
   margin: 0;
+  font-weight: 600;
+}
+
+.series-breadcrumb {
+  margin: 0 20px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.series-back {
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-weight: 800;
+  font-size: 0.9rem;
+  padding: 0;
+}
+
+.series-back:hover { text-decoration: underline; }
+
+.series-breadcrumb__title {
+  color: var(--paper-dim);
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .library-grid {
@@ -206,10 +309,16 @@ input::placeholder { color: var(--paper-dim); }
 }
 
 .library-empty {
-  margin: 40px auto;
+  margin: 30px 20px 40px;
+  padding: 34px 20px;
+  border: 3px dashed var(--ink);
+  border-radius: 16px;
   color: var(--paper-dim);
   text-align: center;
-  max-width: 320px;
+  max-width: 340px;
+  margin-left: auto;
+  margin-right: auto;
+  font-weight: 700;
 }
 
 .comic-card { display: flex; flex-direction: column; gap: 8px; }
@@ -217,30 +326,32 @@ input::placeholder { color: var(--paper-dim); }
 .comic-card__cover {
   position: relative;
   aspect-ratio: 2 / 3;
-  background: linear-gradient(155deg, var(--panel-raised), var(--panel));
-  border: 2px solid var(--paper);
-  box-shadow: 4px 4px 0 var(--line);
-  border-radius: 2px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--blue);
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: transform 0.12s ease;
+  overflow: hidden;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
-.comic-card__cover:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--red); }
+.comic-card__cover:hover { transform: translate(-2px, -2px) rotate(-1deg); box-shadow: 6px 6px 0 var(--blue); }
 
 .comic-card__spine {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 6px;
+  width: 8px;
   background: var(--red);
 }
 
 .comic-card__initial {
-  font-family: 'Anton', sans-serif;
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
   font-size: 2.4rem;
-  color: var(--line);
+  color: var(--blue);
 }
 
 .comic-card__thumb {
@@ -249,7 +360,6 @@ input::placeholder { color: var(--paper-dim); }
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 1px;
 }
 
 .comic-card__badge {
@@ -257,23 +367,24 @@ input::placeholder { color: var(--paper-dim); }
   bottom: 6px;
   right: 6px;
   background: var(--ink);
-  border: 1px solid var(--paper-dim);
-  color: var(--paper);
+  border: 2px solid var(--paper);
+  color: #fff;
   font-size: 0.7rem;
-  padding: 2px 6px;
-  border-radius: 2px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
 }
 
 .comic-card__offline {
   position: absolute;
   top: 6px;
   right: 6px;
-  background: var(--ink);
-  border: 1px solid #4caf6b;
-  color: #4caf6b;
+  background: var(--paper);
+  border: 2px solid var(--green);
+  color: var(--green);
   font-size: 0.65rem;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -291,20 +402,24 @@ input::placeholder { color: var(--paper-dim); }
 .comic-card__title {
   margin: 0;
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.3;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .comic-card__local-tag {
   display: inline-block;
   margin-left: 4px;
-  padding: 1px 6px;
-  border: 1px solid #4caf6b;
-  color: #4caf6b;
+  padding: 1px 7px;
+  border: 2px solid var(--green);
+  color: var(--green);
   border-radius: 10px;
   font-size: 0.6rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   vertical-align: middle;
@@ -318,21 +433,22 @@ input::placeholder { color: var(--paper-dim); }
 }
 
 .comic-card__icon-btn {
-  background: none;
-  border: 1px solid var(--line);
-  color: var(--paper);
-  width: 22px;
-  height: 22px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  color: var(--ink);
+  width: 24px;
+  height: 24px;
   line-height: 1;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   padding: 0;
-  border-radius: 3px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.1s ease, background 0.1s ease;
 }
 
-.comic-card__icon-btn:hover { border-color: var(--focus); color: var(--focus); }
+.comic-card__icon-btn:hover { background: var(--yellow); transform: translate(-1px, -1px); }
 .comic-card__icon-btn:disabled { opacity: 0.5; cursor: default; }
 
 .comic-card__remove {
@@ -340,6 +456,7 @@ input::placeholder { color: var(--paper-dim); }
   border: none;
   color: var(--paper-dim);
   font-size: 0.7rem;
+  font-weight: 700;
   padding: 0;
   text-decoration: underline;
   white-space: nowrap;
@@ -351,42 +468,116 @@ input::placeholder { color: var(--paper-dim); }
   margin: -4px 0 0;
   font-size: 0.7rem;
   color: var(--paper-dim);
+  font-weight: 600;
   min-height: 1.1em;
 }
 
-/* ---------- Reader ---------- */
+/* ---------- series folders ---------- */
+/* Candy-orange folder (vs. each comic's white cover) so a folder reads
+   as "a collection" at a glance, before you even read its label. The
+   tab + peeking spines are the visual argument for why this card
+   exists: several volumes, held together. */
 
-#screen-reader { background: #000; }
+.series-folder__cover {
+  background: linear-gradient(160deg, #ffa159, var(--orange));
+  border-color: var(--ink);
+  box-shadow: 4px 4px 0 var(--orange-dim);
+  gap: 3px;
+  overflow: visible;
+}
+
+.series-folder__cover::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: 14px;
+  width: 42%;
+  height: 13px;
+  background: var(--orange);
+  border: 3px solid var(--ink);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+}
+
+.series-folder__cover:hover {
+  transform: translate(-2px, -2px) rotate(-1deg);
+  box-shadow: 6px 6px 0 var(--orange-dim);
+}
+
+.series-folder__spines {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 52%;
+}
+
+.series-folder__spines span {
+  width: 8px;
+  border-radius: 3px 3px 0 0;
+  border: 2px solid var(--ink);
+}
+
+.series-folder__spines span:nth-child(1) { height: 65%; background: var(--red); }
+.series-folder__spines span:nth-child(2) { height: 100%; background: var(--blue); }
+.series-folder__spines span:nth-child(3) { height: 50%; background: #fff; }
+.series-folder__spines span:nth-child(4) { height: 82%; background: var(--yellow); }
+
+.series-folder__count {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ink);
+  border: 2px solid #fff;
+  color: var(--yellow);
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 700;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Reader ---------- */
+/* Kept dark around the page itself — the neutral surround an image
+   needs for contrast — but the chrome around it picks the cartoon
+   palette back up. */
+
+#screen-reader { background: #131217; }
 
 .reader-topbar {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  background: var(--ink);
+  border-bottom: 3px solid var(--blue);
 }
 
 .reader-topbar__title {
   flex: 1;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.95rem;
+  color: #fff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .reader-topbar__count {
-  font-family: 'Anton', sans-serif;
-  letter-spacing: 0.03em;
-  color: var(--paper-dim);
+  font-family: 'Baloo 2', sans-serif;
+  letter-spacing: 0.02em;
+  color: var(--yellow);
   font-size: 0.9rem;
 }
 
 .reader-back {
   background: none;
   border: none;
-  color: var(--paper);
+  color: #fff;
   font-size: 1.3rem;
   line-height: 1;
   padding: 4px 8px;
@@ -394,22 +585,23 @@ input::placeholder { color: var(--paper-dim); }
 
 .reader-download {
   background: none;
-  border: 1px solid var(--line);
-  color: var(--paper);
+  border: 2px solid #fff;
+  color: #fff;
   font-size: 0.9rem;
   line-height: 1;
-  padding: 6px 8px;
-  border-radius: 3px;
+  padding: 6px 9px;
+  border-radius: 999px;
   flex-shrink: 0;
 }
 
-.reader-download:hover { border-color: var(--focus); color: var(--focus); }
+.reader-download:hover { border-color: var(--yellow); color: var(--yellow); }
 
 .reader-loading, .reader-error {
   margin: auto;
   text-align: center;
-  color: var(--paper-dim);
+  color: #a89fae;
   padding: 40px;
+  font-weight: 600;
 }
 
 .reader-error { color: var(--red); }
@@ -445,15 +637,16 @@ input::placeholder { color: var(--paper-dim); }
 
 .reader-nav-btn:hover, .reader-nav-btn:focus-visible {
   opacity: 1;
-  color: var(--paper);
-  background: linear-gradient(to var(--dir, right), rgba(0,0,0,0.35), transparent);
+  color: var(--yellow);
+  background: linear-gradient(to var(--dir, right), rgba(0,0,0,0.45), transparent);
 }
 
 .reader-nav-btn--prev { left: 0; --dir: right; }
 .reader-nav-btn--next { right: 0; --dir: left; justify-content: flex-end; }
 
 .reader-nav-btn span {
-  font-size: 1.8rem;
+  font-family: 'Baloo 2', sans-serif;
+  font-size: 2.4rem;
 }
 
 .reader-page-spinner {
@@ -463,8 +656,8 @@ input::placeholder { color: var(--paper-dim); }
   transform: translate(-50%, -50%);
   width: 36px;
   height: 36px;
-  border: 3px solid var(--line);
-  border-top-color: var(--focus);
+  border: 4px solid #3a3641;
+  border-top-color: var(--yellow);
   border-radius: 50%;
   animation: reader-spin 0.8s linear infinite;
   pointer-events: none;

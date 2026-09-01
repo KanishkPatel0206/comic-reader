@@ -4,6 +4,7 @@ import {
   loadLibrary, addComic, removeComic,
   getProgress, setProgress,
   loadSettings, saveSettings,
+  groupBySeries, setComicSeries, deriveSeriesTitle,
 } from './library.js';
 import { openPdfSession, renderThumbnail } from './pdf-reader.js';
 import {
@@ -21,6 +22,12 @@ const screens = {
 
 let settings = loadSettings();
 let activeSession = null; // { session, comic, currentIndex, loadToken }
+
+// When set, the library grid is filtered down to just this one series'
+// folder (its key from groupBySeries) instead of showing the top-level
+// mix of folders + standalone comics. Cleared by the breadcrumb's back
+// button, or automatically if the folder empties out to ≤1 comic.
+let openSeriesKey = null;
 
 // In-memory cache of raw PDF blobs, keyed by Drive file ID — a fast
 // first stop before checking the persistent IndexedDB store (blob-store.js).
@@ -164,19 +171,99 @@ function renderLibrary() {
   const items = loadLibrary();
   const grid = $('#library-grid');
   const empty = $('#library-empty');
+  const breadcrumb = $('#series-breadcrumb');
 
   grid.innerHTML = '';
   empty.hidden = items.length > 0;
 
-  items
-    .slice()
-    .sort((a, b) => b.addedAt - a.addedAt)
-    .forEach((comic) => {
+  const { folders, singles } = groupBySeries(items);
+  updateLibraryStats(items.length, folders.length);
+
+  // ---- series folder view: show only that series' own comics ----
+  if (openSeriesKey) {
+    const folder = folders.find((f) => f.key === openSeriesKey);
+    if (!folder) {
+      // Folder emptied out (last extra volume was removed/reassigned) —
+      // fall back to the top-level view rather than showing nothing.
+      openSeriesKey = null;
+      renderLibrary();
+      return;
+    }
+    breadcrumb.hidden = false;
+    $('#series-breadcrumb-title').textContent = `${folder.comics.length} volumes of ${folder.seriesTitle}`;
+    folder.comics.forEach((comic) => {
       const card = renderComicCard(comic);
       grid.appendChild(card);
       markOfflineBadgeWhenCached(comic.fileId, card);
       applyThumbnailWhenCached(comic.fileId, card);
     });
+    return;
+  }
+
+  // ---- top-level view: series folders (2+ volumes) + standalone comics ----
+  breadcrumb.hidden = true;
+
+  const entries = [
+    ...folders.map((f) => ({ type: 'folder', sortKey: f.seriesTitle.toLowerCase(), folder: f })),
+    ...singles.map((c) => ({ type: 'comic', sortKey: c.title.toLowerCase(), comic: c, addedAt: c.addedAt })),
+  ];
+  // Newest-first, same ordering the flat grid used to have — folders sort
+  // by their most-recently-added volume so a freshly-added chapter bumps
+  // its series back to the top instead of the folder going stale.
+  entries.forEach((e) => {
+    if (e.type === 'folder') e.addedAt = Math.max(...e.folder.comics.map((c) => c.addedAt || 0));
+  });
+  entries.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+
+  entries.forEach((entry) => {
+    if (entry.type === 'folder') {
+      grid.appendChild(renderSeriesFolderCard(entry.folder));
+      return;
+    }
+    const card = renderComicCard(entry.comic);
+    grid.appendChild(card);
+    markOfflineBadgeWhenCached(entry.comic.fileId, card);
+    applyThumbnailWhenCached(entry.comic.fileId, card);
+  });
+}
+
+// Small "N comics · M series" line under the masthead. Hidden entirely
+// when the library's empty, rather than showing "0 comics", since the
+// empty state below already covers that case.
+function updateLibraryStats(comicCount, folderCount) {
+  const el = $('#library-stats');
+  if (!el) return;
+  if (comicCount === 0) {
+    el.textContent = '';
+    return;
+  }
+  const comicWord = comicCount === 1 ? 'comic' : 'comics';
+  const folderWord = folderCount === 1 ? 'series folder' : 'series folders';
+  el.textContent = folderCount > 0
+    ? `${comicCount} ${comicWord}, sorted into ${folderCount} ${folderWord}`
+    : `${comicCount} ${comicWord}`;
+}
+
+// Folder card for a series with 2+ volumes/chapters in the library. Opens
+// a filtered view (see renderLibrary's openSeriesKey branch) that shows
+// only that series' comics — nothing from any other series ever shows up
+// in it, since membership comes straight from groupBySeries' key.
+function renderSeriesFolderCard(folder) {
+  const card = document.createElement('article');
+  card.className = 'comic-card series-folder';
+  card.innerHTML = `
+    <button class="comic-card__cover series-folder__cover" data-open-series="${escapeHtml(folder.key)}" aria-label="Open ${escapeHtml(folder.seriesTitle)} folder, ${folder.comics.length} volumes">
+      <span class="series-folder__count">${folder.comics.length}</span>
+      <span class="series-folder__spines" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </span>
+    </button>
+    <div class="comic-card__meta">
+      <p class="comic-card__title">${escapeHtml(folder.seriesTitle)}</p>
+    </div>
+    <p class="comic-card__status">${folder.comics.length} volumes</p>
+  `;
+  return card;
 }
 
 // Swaps the placeholder initial for a real cover image if a thumbnail has
@@ -244,6 +331,7 @@ function renderComicCard(comic) {
       <p class="comic-card__title">${escapeHtml(comic.title)}${comic.source === 'local' ? ' <span class="comic-card__local-tag">on device</span>' : ''}</p>
       <div class="comic-card__actions">
         <button class="comic-card__icon-btn" data-download="${comic.fileId}" aria-label="Download ${escapeHtml(comic.title)}" title="Download to device">⬇</button>
+        <button class="comic-card__icon-btn" data-set-series="${comic.fileId}" aria-label="Set series for ${escapeHtml(comic.title)}" title="Assign to a series / folder">🏷</button>
         <button class="comic-card__remove" data-remove="${comic.fileId}" aria-label="Remove ${escapeHtml(comic.title)}">Remove</button>
       </div>
     </div>
@@ -286,11 +374,18 @@ function bindLibraryEvents() {
 
   $('#library-grid').addEventListener('click', (e) => {
     const openId = e.target.closest('[data-open]')?.dataset.open;
+    const openSeries = e.target.closest('[data-open-series]')?.dataset.openSeries;
     const removeId = e.target.closest('[data-remove]')?.dataset.remove;
     const downloadId = e.target.closest('[data-download]')?.dataset.download;
+    const setSeriesId = e.target.closest('[data-set-series]')?.dataset.setSeries;
 
     if (openId) openComic(openId);
+    if (openSeries != null) {
+      openSeriesKey = openSeries;
+      renderLibrary();
+    }
     if (downloadId) downloadComic(downloadId);
+    if (setSeriesId) promptSetSeries(setSeriesId);
     if (removeId) {
       const comic = loadLibrary().find((c) => c.fileId === removeId);
       if (confirm(`Remove "${comic?.title ?? removeId}" from your library?`)) {
@@ -302,6 +397,11 @@ function bindLibraryEvents() {
         refreshStorageUsed();
       }
     }
+  });
+
+  $('#series-back').addEventListener('click', () => {
+    openSeriesKey = null;
+    renderLibrary();
   });
 
   $('#save-key-btn').addEventListener('click', () => {
@@ -343,6 +443,26 @@ function bindLibraryEvents() {
       status.textContent = "Couldn't save that file — your device storage may be full.";
     }
   });
+}
+
+// Lets the user correct which series a comic belongs to when the
+// title-based auto-grouping guesses wrong (e.g. "Batman: Year One" would
+// otherwise stay standalone since it has no volume/chapter number to
+// strip). Entering the same series name as an existing folder merges this
+// comic into it; clearing the field reverts to auto-detection from the
+// title. Uses prompt(), matching the confirm()-based interactions already
+// used elsewhere in this screen (remove, clear cache).
+function promptSetSeries(fileId) {
+  const comic = loadLibrary().find((c) => c.fileId === fileId);
+  if (!comic) return;
+  const current = comic.series || deriveSeriesTitle(comic.title);
+  const next = prompt(
+    `Series/folder for "${comic.title}":\n(Leave blank to auto-detect from the title.)`,
+    current
+  );
+  if (next === null) return; // cancelled
+  setComicSeries(fileId, next);
+  renderLibrary();
 }
 
 // ---------- opening + reading a comic ----------

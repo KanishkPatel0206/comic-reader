@@ -60,7 +60,7 @@ comic-reader/
 │   └── styles.css
 └── js/
     ├── drive-api.js      # fetchFileBlob / fetchFileMeta / listPdfInFolder
-    ├── library.js         # localStorage-backed library + settings + progress
+    ├── library.js         # localStorage-backed library + settings + progress + series grouping
     ├── blob-store.js       # IndexedDB-backed persistent PDF blob cache
     ├── pdf-reader.js         # pdf.js render -> ordered page object URLs
     └── app.js                 # screen wiring / event handlers
@@ -121,6 +121,21 @@ comic-reader/
   caches the app's own code — it never touches Drive API responses, so it
   can't cause a stale/expired-file issue when reading comics.
 
+- **Series folders (`js/library.js`: `groupBySeries`)** — comics that
+  belong to the same series are automatically combined into one folder on
+  the library grid instead of cluttering it as separate cards. Grouping is
+  derived from each comic's title by stripping a trailing volume/chapter/
+  issue/book/part marker (`Vol. 3`, `Chapter 12`, `Bk 2`, `#7`, `Part III`,
+  etc.) — e.g. "Saga Vol. 1", "Saga Vol. 2", and "Saga #10" all fold into
+  one **Saga** folder. Opening a folder filters the grid down to *only*
+  that series' volumes/chapters, sorted by the number in their title, with
+  a breadcrumb back to the full library. A series only becomes a folder
+  once it has 2+ comics — a lone issue stays a normal standalone card
+  until a second one shows up. If the title-based guess is wrong (or you
+  want to combine comics whose titles don't share a common prefix), the 🏷
+  button on any card lets you set its series manually, which overrides
+  auto-detection and can merge it into an existing folder or split it out
+  of one.
 - **Storage usage + clear cache** — a "Storage" panel in settings shows
   total bytes cached in IndexedDB and a "Free up space" button. It only
   clears Drive-backed comics (they simply re-download next time they're
